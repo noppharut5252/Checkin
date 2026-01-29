@@ -1,15 +1,14 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { AppData, CheckInActivity, CheckInLocation, CheckInUser } from '../types';
-import { MapPin, Camera, Navigation, AlertOctagon, CheckCircle, Loader2, Send, MessageSquare, AlertTriangle, ArrowLeft, RefreshCw } from 'lucide-react';
-import { performCheckIn, uploadCheckInImage } from '../services/api';
-import { resizeImage, fileToBase64 } from '../services/utils';
+import { MapPin, Camera, Navigation, AlertOctagon, CheckCircle, Loader2, Send, MessageSquare, AlertTriangle, ArrowLeft, RefreshCw, FileCheck } from 'lucide-react';
+import { performCheckIn, uploadCheckInImage, getUserCheckInHistory } from '../services/api';
+import { resizeImage } from '../services/utils';
 import { useParams, useNavigate } from 'react-router-dom';
 
 interface CheckInViewProps {
     data: AppData;
     user: CheckInUser;
-    activityId?: string; // Optional prop for backward compatibility or direct usage
+    activityId?: string;
 }
 
 const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propActivityId }) => {
@@ -17,12 +16,13 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     const params = useParams<{ activityId: string }>();
     const activityId = propActivityId || params.activityId;
 
-    const [status, setStatus] = useState<'locating' | 'ready' | 'blocked' | 'submitting' | 'success'>('locating');
+    const [status, setStatus] = useState<'locating' | 'ready' | 'blocked' | 'submitting' | 'success' | 'already_checked'>('locating');
     const [locationError, setLocationError] = useState('');
     const [currentPos, setCurrentPos] = useState<{ lat: number, lng: number } | null>(null);
     const [distance, setDistance] = useState<number>(0);
     const [photo, setPhoto] = useState<string | null>(null);
     const [comment, setComment] = useState('');
+    const [checkedInDetail, setCheckedInDetail] = useState<any>(null);
     
     // Find Activity & Location Data
     const activity = data.checkInActivities.find(a => a.ActivityID === activityId);
@@ -30,12 +30,29 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // 1. Continuous GPS Tracking
+    // 0. Check if already checked in on mount
     useEffect(() => {
-        if (!activityId) return; 
+        const checkHistory = async () => {
+            if (!user?.UserID || !activityId) return;
+            try {
+                const logs = await getUserCheckInHistory(user.UserID);
+                const existing = logs.find((l: any) => l.ActivityID === activityId);
+                if (existing) {
+                    setCheckedInDetail(existing);
+                    setStatus('already_checked');
+                }
+            } catch (e) {
+                console.error("Failed to check history", e);
+            }
+        };
+        checkHistory();
+    }, [user, activityId]);
+
+    // 1. Continuous GPS Tracking (Only if not checked in)
+    useEffect(() => {
+        if (!activityId || status === 'already_checked' || status === 'success') return; 
         
         if (!location) {
-            // Only set blocked if we are sure data is loaded but location is missing
             if (data.checkInLocations.length > 0) {
                 setStatus('blocked');
                 setLocationError('ไม่พบข้อมูลกิจกรรมหรือสถานที่');
@@ -49,7 +66,6 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                 const lng = pos.coords.longitude;
                 setCurrentPos({ lat, lng });
 
-                // Calculate Distance (Haversine)
                 const targetLat = parseFloat(location.Latitude);
                 const targetLng = parseFloat(location.Longitude);
                 const R = 6371e3; 
@@ -65,13 +81,11 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
 
                 setDistance(Math.round(dist));
 
-                // Check Distance Logic
                 const radius = parseFloat(location.RadiusMeters) || 100;
-                // Allow a small buffer (e.g., +10% or just strictly radius) - here strictly radius for UI feedback
                 if (dist <= radius) {
-                    if (status !== 'submitting' && status !== 'success') setStatus('ready');
+                    if (status !== 'submitting') setStatus('ready');
                 } else {
-                    if (status !== 'submitting' && status !== 'success') setStatus('blocked');
+                    if (status !== 'submitting') setStatus('blocked');
                 }
             },
             (err) => {
@@ -139,6 +153,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
         );
     }
 
+    // Success Screen (Freshly checked in)
     if (status === 'success') {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-green-50 p-6 text-center font-kanit">
@@ -150,6 +165,63 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                         บันทึกเวลา: {new Date().toLocaleTimeString()}
                     </div>
                     <button onClick={() => navigate(-1)} className="mt-8 text-green-600 font-bold hover:underline">ปิดหน้าต่าง</button>
+                </div>
+            </div>
+        );
+    }
+
+    // Already Checked In Screen (From History)
+    if (status === 'already_checked' && checkedInDetail) {
+        const getImageUrl = (url: string) => url && !url.startsWith('http') ? `https://drive.google.com/thumbnail?id=${url}&sz=w1000` : url;
+        return (
+            <div className="min-h-screen bg-gray-50 p-4 font-kanit flex flex-col items-center justify-center">
+                <div className="bg-white p-6 rounded-3xl shadow-lg border border-gray-100 w-full max-w-md animate-in fade-in">
+                    <div className="flex flex-col items-center text-center mb-6">
+                        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mb-3">
+                            <FileCheck className="w-8 h-8" />
+                        </div>
+                        <h2 className="text-xl font-bold text-gray-800">ลงทะเบียนแล้ว</h2>
+                        <p className="text-gray-500 text-sm mt-1">คุณได้ทำการเช็คอินกิจกรรมนี้ไปแล้ว</p>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="p-4 bg-gray-50 rounded-xl space-y-2 text-sm">
+                            <div className="flex justify-between">
+                                <span className="text-gray-500">กิจกรรม:</span>
+                                <span className="font-bold text-gray-800 text-right">{activity.Name}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-500">สถานที่:</span>
+                                <span className="text-gray-800 text-right">{location.Name}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-500">เวลา:</span>
+                                <span className="text-gray-800 text-right">{new Date(checkedInDetail.Timestamp).toLocaleString('th-TH')}</span>
+                            </div>
+                            {checkedInDetail.Distance && (
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500">ระยะห่าง:</span>
+                                    <span className="text-gray-800 text-right">{checkedInDetail.Distance} ม.</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {checkedInDetail.PhotoURL && (
+                            <div className="rounded-xl overflow-hidden border border-gray-200">
+                                <img src={getImageUrl(checkedInDetail.PhotoURL)} className="w-full h-48 object-cover" />
+                            </div>
+                        )}
+
+                        {checkedInDetail.Comment && (
+                            <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-100 text-sm text-yellow-800 italic">
+                                "{checkedInDetail.Comment}"
+                            </div>
+                        )}
+                    </div>
+
+                    <button onClick={() => navigate(-1)} className="w-full mt-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">
+                        ย้อนกลับ
+                    </button>
                 </div>
             </div>
         );

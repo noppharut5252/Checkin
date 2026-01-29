@@ -19,8 +19,8 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
     const [searchTerm, setSearchTerm] = useState('');
     const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-    // Check config for history visibility
-    const showHistory = data.appConfig?.menu_checkin_history !== false;
+    // Ensure we handle the undefined case correctly (default to true)
+    const showHistory = data.appConfig ? (data.appConfig.menu_checkin_history !== false) : true;
 
     useEffect(() => {
         if (navigator.geolocation) {

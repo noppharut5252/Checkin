@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { AppData, CheckInLocation, CheckInActivity, CheckInUser } from '../types';
 import { MapPin, Plus, Edit2, Trash2, Save, X, Activity, LayoutGrid, Loader2, Calendar, Database, ImageIcon, Upload, Users, Clock, Camera, PlayCircle, Printer, QrCode, FileText, Download, MousePointer2, Search, Filter, AlertTriangle, CheckCircle, Info, Layers, Building, ChevronLeft, ChevronRight } from 'lucide-react';

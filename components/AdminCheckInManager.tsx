@@ -1,7 +1,8 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { AppData, CheckInLocation, CheckInActivity, CheckInUser } from '../types';
-import { MapPin, Plus, Edit2, Trash2, Save, X, Activity, LayoutGrid, Loader2, Calendar, Database, ImageIcon, Upload, Users, Clock, Camera, PlayCircle, Printer, QrCode, FileText, Download, MousePointer2, Search, Filter, AlertTriangle, CheckCircle, Info, Layers, Building, ChevronLeft, ChevronRight } from 'lucide-react';
-import { saveLocation, deleteLocation, saveActivity, deleteActivity, uploadImage } from '../services/api';
+import { MapPin, Plus, Edit2, Trash2, Save, X, Activity, LayoutGrid, Loader2, Calendar, Database, ImageIcon, Upload, Users, Clock, Camera, PlayCircle, Printer, QrCode, FileText, Download, MousePointer2, Search, Filter, AlertTriangle, CheckCircle, Info, Layers, Building, ChevronLeft, ChevronRight, History, User } from 'lucide-react';
+import { saveLocation, deleteLocation, saveActivity, deleteActivity, uploadImage, getCheckInLogs, deleteCheckInLog } from '../services/api';
 import { resizeImage } from '../services/utils';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import QRCode from 'qrcode';
@@ -17,7 +18,7 @@ interface AdminProps {
     onDataUpdate: () => void;
 }
 
-// --- Map Picker Component with Search ---
+// ... (MapPicker component remains unchanged) ...
 const MapPicker: React.FC<{ lat: number, lng: number, onChange: (lat: number, lng: number) => void }> = ({ lat, lng, onChange }) => {
     const mapRef = useRef<HTMLDivElement>(null);
     const leafletMap = useRef<L.Map | null>(null);
@@ -117,7 +118,7 @@ const MapPicker: React.FC<{ lat: number, lng: number, onChange: (lat: number, ln
 const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate }) => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const [activeTab, setActiveTab] = useState<'locations' | 'activities' | 'printables'>('locations');
+    const [activeTab, setActiveTab] = useState<'locations' | 'activities' | 'printables' | 'logs'>('locations');
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -127,6 +128,11 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
     const [searchLocationQuery, setSearchLocationQuery] = useState('');
     const [searchActivityQuery, setSearchActivityQuery] = useState('');
     const [activityStatusFilter, setActivityStatusFilter] = useState<'all' | 'active' | 'upcoming' | 'ended'>('all');
+    const [searchLogsQuery, setSearchLogsQuery] = useState('');
+    
+    // Logs State
+    const [logs, setLogs] = useState<any[]>([]);
+    const [isLoadingLogs, setIsLoadingLogs] = useState(false);
     
     // Custom Poster Note
     const [posterNote, setPosterNote] = useState('');
@@ -134,7 +140,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
     // Delete Modal State
     const [deleteModal, setDeleteModal] = useState<{ 
         isOpen: boolean; 
-        type: 'location' | 'activity'; 
+        type: 'location' | 'activity' | 'log'; 
         id: string; 
         title: string;
         warning?: string;
@@ -148,6 +154,17 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
     const [currentLocImages, setCurrentLocImages] = useState<string[]>([]);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Fetch Logs when tab active
+    useEffect(() => {
+        if (activeTab === 'logs') {
+            setIsLoadingLogs(true);
+            getCheckInLogs().then(data => {
+                setLogs(data);
+                setIsLoadingLogs(false);
+            });
+        }
+    }, [activeTab]);
 
     // Auto-open edit modal if query param present
     useEffect(() => {
@@ -221,6 +238,14 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
         });
     }, [data.checkInActivities, searchActivityQuery, activityStatusFilter]);
 
+    const filteredLogs = useMemo(() => {
+        return logs.filter(log => 
+            (log.UserName || '').toLowerCase().includes(searchLogsQuery.toLowerCase()) ||
+            (log.ActivityName || '').toLowerCase().includes(searchLogsQuery.toLowerCase()) ||
+            (log.LocationName || '').toLowerCase().includes(searchLogsQuery.toLowerCase())
+        );
+    }, [logs, searchLogsQuery]);
+
     // Helper for Image URLs
     const getImageUrl = (idOrUrl: string) => {
         if (!idOrUrl) return '';
@@ -277,12 +302,24 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
         });
     };
 
+    const handleDeleteLogClick = (log: any) => {
+        setDeleteModal({
+            isOpen: true,
+            type: 'log',
+            id: log.CheckInID,
+            title: `ลบประวัติของ "${log.UserName}"?`
+        });
+    };
+
     const handleConfirmDelete = async () => {
         setIsSaving(true);
         if (deleteModal.type === 'location') {
             await deleteLocation(deleteModal.id);
-        } else {
+        } else if (deleteModal.type === 'activity') {
             await deleteActivity(deleteModal.id);
+        } else if (deleteModal.type === 'log') {
+            await deleteCheckInLog(deleteModal.id);
+            setLogs(prev => prev.filter(l => l.CheckInID !== deleteModal.id));
         }
         setIsSaving(false);
         setDeleteModal(prev => ({ ...prev, isOpen: false }));
@@ -305,7 +342,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
         }
     };
 
-    // Image Handlers
+    // ... (Image Handlers remain same) ...
     const handleLocationImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
@@ -383,6 +420,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
         }
     };
 
+    // ... (Poster Generation Logic remains same) ...
     const generatePosterHTML = async (activitiesToPrint: any[], customNote: string) => {
         const qrCodePromises = activitiesToPrint.map(async (act) => {
             const checkInUrl = `${window.location.origin}${window.location.pathname}#/checkin/${act.ActivityID}`;
@@ -401,74 +439,18 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                     <style>
                         @page { size: A4; margin: 0; }
                         body { margin: 0; padding: 0; font-family: 'Kanit', sans-serif; background: #eee; -webkit-print-color-adjust: exact; }
-                        .page {
-                            width: 209mm;
-                            height: 296mm;
-                            background: white;
-                            position: relative;
-                            overflow: hidden;
-                            page-break-after: always;
-                            display: flex;
-                            flex-direction: column;
-                            align-items: center;
-                            text-align: center;
-                            margin: 0 auto;
-                        }
+                        .page { width: 209mm; height: 296mm; background: white; position: relative; overflow: hidden; page-break-after: always; display: flex; flex-direction: column; align-items: center; text-align: center; margin: 0 auto; }
                         .page:last-child { page-break-after: avoid; }
-                        
-                        .header {
-                            background: #2563eb;
-                            width: 100%;
-                            padding: 40px 20px;
-                            color: white;
-                            clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%);
-                        }
+                        .header { background: #2563eb; width: 100%; padding: 40px 20px; color: white; clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%); }
                         .header h1 { margin: 0; font-size: 32pt; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
                         .header p { margin: 10px 0 0; font-size: 14pt; opacity: 0.9; }
-                        
                         .content { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; padding: 20px; }
-                        
                         .activity-name { font-size: 24pt; font-weight: bold; color: #1e3a8a; margin-bottom: 20px; line-height: 1.2; max-width: 90%; }
-                        
-                        .qr-container {
-                            border: 4px dashed #cbd5e1;
-                            border-radius: 20px;
-                            padding: 20px;
-                            background: white;
-                            margin: 20px 0;
-                        }
+                        .qr-container { border: 4px dashed #cbd5e1; border-radius: 20px; padding: 20px; background: white; margin: 20px 0; }
                         .qr-img { width: 100mm; height: 100mm; object-fit: contain; }
-                        
-                        .loc-badge {
-                            background: #f1f5f9;
-                            color: #475569;
-                            padding: 10px 30px;
-                            border-radius: 50px;
-                            font-size: 16pt;
-                            font-weight: bold;
-                            display: flex;
-                            align-items: center;
-                            margin-top: 20px;
-                        }
-                        
-                        .custom-note {
-                            margin-top: 20px;
-                            font-size: 18pt;
-                            color: #d97706;
-                            font-weight: bold;
-                            border: 2px solid #fbbf24;
-                            padding: 10px 20px;
-                            border-radius: 10px;
-                            background-color: #fffbeb;
-                        }
-
-                        .footer {
-                            width: 100%;
-                            padding: 20px;
-                            background: #f8fafc;
-                            border-top: 1px solid #e2e8f0;
-                            margin-top: auto;
-                        }
+                        .loc-badge { background: #f1f5f9; color: #475569; padding: 10px 30px; border-radius: 50px; font-size: 16pt; font-weight: bold; display: flex; align-items: center; margin-top: 20px; }
+                        .custom-note { margin-top: 20px; font-size: 18pt; color: #d97706; font-weight: bold; border: 2px solid #fbbf24; padding: 10px 20px; border-radius: 10px; background-color: #fffbeb; }
+                        .footer { width: 100%; padding: 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; margin-top: auto; }
                         .footer-text { font-size: 12pt; color: #64748b; }
                         .no-print { position: fixed; top: 10px; right: 10px; z-index: 999; }
                         button { padding: 10px 20px; background: blue; color: white; border: none; border-radius: 5px; cursor: pointer; }
@@ -476,30 +458,18 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                     </style>
                 </head>
                 <body>
-                    <div class="no-print">
-                        <button onclick="window.print()">Print Posters</button>
-                    </div>
+                    <div class="no-print"><button onclick="window.print()">Print Posters</button></div>
                     ${pages.map(p => `
                         <div class="page">
-                            <div class="header">
-                                <h1>Check-In Point</h1>
-                                <p>จุดลงทะเบียนเข้าร่วมกิจกรรม</p>
-                            </div>
+                            <div class="header"><h1>Check-In Point</h1><p>จุดลงทะเบียนเข้าร่วมกิจกรรม</p></div>
                             <div class="content">
                                 <div class="activity-name">${p.act.Name}</div>
-                                <div class="qr-container">
-                                    <img src="${p.qr}" class="qr-img" />
-                                </div>
+                                <div class="qr-container"><img src="${p.qr}" class="qr-img" /></div>
                                 <p style="font-size: 14pt; color: #ef4444; font-weight: bold;">สแกนเพื่อลงทะเบียน</p>
-                                
-                                <div class="loc-badge">
-                                    📍 ${p.loc?.Name || 'ไม่ระบุสถานที่'}
-                                </div>
+                                <div class="loc-badge">📍 ${p.loc?.Name || 'ไม่ระบุสถานที่'}</div>
                                 ${customNote ? `<div class="custom-note">Note: ${customNote}</div>` : ''}
                             </div>
-                            <div class="footer">
-                                <div class="footer-text">ระบบเช็คอินกิจกรรม CompManager • ID: ${p.act.ActivityID}</div>
-                            </div>
+                            <div class="footer"><div class="footer-text">ระบบเช็คอินกิจกรรม CompManager • ID: ${p.act.ActivityID}</div></div>
                         </div>
                     `).join('')}
                 </body>
@@ -520,18 +490,9 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
 
     const handlePrintPoster = async (activityId: string | 'all', locationId?: string) => {
         const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-            alert('Pop-up Blocked');
-            return;
-        }
-
+        if (!printWindow) { alert('Pop-up Blocked'); return; }
         const activities = getActivitiesToPrint(activityId, locationId);
-        if (activities.length === 0) {
-            printWindow.close();
-            alert('ไม่มีกิจกรรมที่จะพิมพ์');
-            return;
-        }
-
+        if (activities.length === 0) { printWindow.close(); alert('ไม่มีกิจกรรมที่จะพิมพ์'); return; }
         const html = await generatePosterHTML(activities, posterNote);
         printWindow.document.write(html);
         printWindow.document.close();
@@ -539,11 +500,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
 
     const handleDownloadPDF = async (activityId: string | 'all', locationId?: string) => {
         const activities = getActivitiesToPrint(activityId, locationId);
-        if (activities.length === 0) {
-            alert('ไม่มีกิจกรรมที่จะดาวน์โหลด');
-            return;
-        }
-
+        if (activities.length === 0) { alert('ไม่มีกิจกรรมที่จะดาวน์โหลด'); return; }
         setIsGenerating(true);
         try {
             const html = await generatePosterHTML(activities, posterNote);
@@ -551,22 +508,9 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
             element.innerHTML = html;
             const noPrint = element.querySelector('.no-print');
             if (noPrint) noPrint.remove();
-
-            const opt = {
-                margin: 0,
-                filename: `checkin_posters_${Date.now()}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2 },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-
+            const opt = { margin: 0, filename: `checkin_posters_${Date.now()}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
             await html2pdf().set(opt).from(element).save();
-        } catch (e) {
-            console.error(e);
-            alert('เกิดข้อผิดพลาดในการสร้าง PDF');
-        } finally {
-            setIsGenerating(false);
-        }
+        } catch (e) { console.error(e); alert('เกิดข้อผิดพลาดในการสร้าง PDF'); } finally { setIsGenerating(false); }
     };
 
     const getSafeDateValue = (dateStr?: string) => {
@@ -585,6 +529,8 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                 title={deleteModal.title}
                 description={deleteModal.type === 'location' 
                     ? "การลบสถานที่อาจส่งผลกระทบต่อกิจกรรมที่ผูกกับสถานที่นี้ คุณแน่ใจหรือไม่?" 
+                    : deleteModal.type === 'log' 
+                    ? "คุณต้องการลบประวัติการเช็คอินนี้ใช่หรือไม่?"
                     : "คุณต้องการลบกิจกรรมนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้"}
                 confirmLabel="ยืนยันการลบ"
                 confirmColor="red"
@@ -609,6 +555,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                     <div className="flex bg-gray-100 p-1 rounded-lg">
                         <button onClick={() => setActiveTab('locations')} className={`px-4 py-2 rounded-md text-sm font-bold ${activeTab === 'locations' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>สถานที่</button>
                         <button onClick={() => setActiveTab('activities')} className={`px-4 py-2 rounded-md text-sm font-bold ${activeTab === 'activities' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>กิจกรรม</button>
+                        <button onClick={() => setActiveTab('logs')} className={`px-4 py-2 rounded-md text-sm font-bold ${activeTab === 'logs' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>Logs</button>
                         <button onClick={() => setActiveTab('printables')} className={`px-4 py-2 rounded-md text-sm font-bold ${activeTab === 'printables' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>พิมพ์ป้าย</button>
                     </div>
                 </div>
@@ -754,6 +701,71 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                         );
                     })}
                     {filteredActivities.length === 0 && <div className="text-center py-10 text-gray-400">ไม่พบกิจกรรม</div>}
+                </div>
+            ) : activeTab === 'logs' ? (
+                <div className="space-y-4">
+                    <div className="flex gap-2 mb-4">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                            <input 
+                                type="text"
+                                placeholder="ค้นหาตามชื่อผู้ใช้, กิจกรรม, หรือสถานที่..."
+                                className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={searchLogsQuery}
+                                onChange={(e) => setSearchLogsQuery(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    {isLoadingLogs ? (
+                        <div className="flex justify-center py-20"><Loader2 className="w-10 h-10 animate-spin text-gray-400"/></div>
+                    ) : filteredLogs.length === 0 ? (
+                        <div className="text-center py-20 text-gray-400">ไม่พบประวัติการเช็คอิน</div>
+                    ) : (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">ผู้ใช้งาน</th>
+                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">กิจกรรม/สถานที่</th>
+                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">เวลา</th>
+                                            <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">จัดการ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {filteredLogs.map((log) => (
+                                            <tr key={log.CheckInID} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="flex items-center">
+                                                        <div className="shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                                                            <User className="w-5 h-5"/>
+                                                        </div>
+                                                        <div className="ml-4">
+                                                            <div className="text-sm font-bold text-gray-900">{log.UserName}</div>
+                                                            <div className="text-xs text-gray-500">{log.UserID}</div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="text-sm text-gray-900 font-medium">{log.ActivityName}</div>
+                                                    <div className="text-xs text-gray-500">{log.LocationName}</div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    {new Date(log.Timestamp).toLocaleString('th-TH')}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                    <button onClick={() => handleDeleteLogClick(log)} className="text-red-600 hover:text-red-900 p-2 hover:bg-red-50 rounded-lg">
+                                                        <Trash2 className="w-4 h-4"/>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             ) : (
                 <div className="space-y-4">

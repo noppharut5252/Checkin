@@ -4,7 +4,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://noppharut5252.github.io/AcademicCompetitionManager/",
+  "homepage": "https://noppharut5252.github.io/Checkin/",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -20,13 +20,16 @@
     "@vitejs/plugin-react": "^5.1.2",
     "jsqr": "^1.4.0",
     "canvas-confetti": "^1.9.2",
-    "qrcode": "^1.5.3"
+    "qrcode": "^1.5.3",
+    "leaflet": "^1.9.4",
+    "react-easy-crop": "^5.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
-    "vite-plugin-pwa": "^0.21.1"
+    "vite-plugin-pwa": "^0.21.1",
+    "@types/leaflet": "^1.9.16"
   }
 }

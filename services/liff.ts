@@ -1,7 +1,7 @@
 
 // Wrapper for LINE LIFF SDK
 
-const LIFF_ID = "2006490627-uva5V8Q6";
+const LIFF_ID = "2006369866-W1AicZ72";
 
 let liffInitPromise: Promise<void> | null = null;
 

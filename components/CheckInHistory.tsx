@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { CheckInUser } from '../types';
-import { History, Calendar, MapPin, CheckCircle, Loader2, Navigation } from 'lucide-react';
+import { History, Calendar, MapPin, CheckCircle, Loader2, Navigation, AlertTriangle } from 'lucide-react';
 import { getUserCheckInHistory } from '../services/api';
 
 interface CheckInHistoryProps {
@@ -11,15 +11,26 @@ interface CheckInHistoryProps {
 const CheckInHistory: React.FC<CheckInHistoryProps> = ({ user }) => {
     const [history, setHistory] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
 
     useEffect(() => {
         const loadHistory = async () => {
+             // Fallback for ID, ensuring we have a string to query
+             const uid = user.UserID || user.userid;
+             
+             if (!uid) {
+                 setLoading(false);
+                 setError('ไม่พบข้อมูลผู้ใช้งาน (User ID missing)');
+                 return;
+             }
+
              setLoading(true);
              try {
-                 const logs = await getUserCheckInHistory(user.UserID);
+                 const logs = await getUserCheckInHistory(uid);
                  setHistory(logs);
              } catch (e) {
                  console.error("Failed to load history", e);
+                 setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
              } finally {
                  setLoading(false);
              }
@@ -34,6 +45,15 @@ const CheckInHistory: React.FC<CheckInHistoryProps> = ({ user }) => {
             <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                 <Loader2 className="w-8 h-8 animate-spin mb-2" />
                 <p className="text-sm">กำลังโหลดประวัติ...</p>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex flex-col items-center justify-center h-64 text-red-400 bg-red-50 rounded-2xl border border-red-100 m-4">
+                <AlertTriangle className="w-10 h-10 mb-2" />
+                <p className="text-sm">{error}</p>
             </div>
         );
     }

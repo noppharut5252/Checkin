@@ -12,7 +12,7 @@ import Dashboard from './components/Dashboard';
 import SettingsView from './components/SettingsView'; 
 import ActivityDetailView from './components/ActivityDetailView'; 
 import { AppData, User } from './types';
-import { fetchData, registerCheckInUser } from './services/api';
+import { fetchData, checkUserRegistration } from './services/api';
 import { initLiff } from './services/liff';
 import { Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 
@@ -42,6 +42,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isRegistering, setIsRegistering] = useState(false);
 
   const loadData = async () => {
       setLoading(true);
@@ -59,39 +60,62 @@ const App: React.FC = () => {
 
   useEffect(() => {
       loadData();
-      const savedUser = localStorage.getItem('comp_user');
-      if (savedUser) {
-          setUser(JSON.parse(savedUser));
-      } else {
-          initLiff().then(profile => {
-               if (profile) {
-                   const implicitUser: any = { 
-                       UserID: 'LIFF-'+profile.userId, 
-                       Name: profile.displayName, 
-                       Role: 'user', 
-                       LineID: profile.userId, 
-                       PictureUrl: profile.pictureUrl
-                   };
-                   setUser(implicitUser);
-                   registerCheckInUser({ 
-                        name: profile.displayName, 
-                        lineId: profile.userId, 
-                        pictureUrl: profile.pictureUrl || '' 
-                   });
-                   localStorage.setItem('comp_user', JSON.stringify(implicitUser));
-               }
-          });
-      }
+      
+      const initializeAuth = async () => {
+          // Check local storage first
+          const savedUser = localStorage.getItem('comp_user');
+          if (savedUser) {
+              setUser(JSON.parse(savedUser));
+              return;
+          }
+
+          // Try LIFF Init
+          try {
+              const profile = await initLiff();
+              if (profile) {
+                  // Check against DB
+                  const dbUser = await checkUserRegistration(profile.userId);
+                  
+                  if (dbUser) {
+                      // Exists -> Login
+                      handleLogin(dbUser);
+                  } else {
+                      // New User -> Setup temp user & Redirect to Register
+                      const partialUser: any = { 
+                           UserID: 'LIFF-' + profile.userId, 
+                           username: profile.displayName, // Store Line Name in Username
+                           LineID: profile.userId, 
+                           PictureUrl: profile.pictureUrl,
+                           Role: 'user',
+                           Name: '', // Formal name empty
+                           Surname: '',
+                           Prefix: ''
+                      };
+                      setUser(partialUser);
+                      setIsRegistering(true);
+                  }
+              }
+          } catch (e) {
+              console.error("Auth Error", e);
+          }
+      };
+
+      initializeAuth();
   }, []);
 
   const handleLogin = (u: User) => {
       setUser(u);
+      setIsRegistering(false);
       localStorage.setItem('comp_user', JSON.stringify(u));
   };
 
   const handleUpdateUser = (updatedUser: User) => {
       setUser(updatedUser);
       localStorage.setItem('comp_user', JSON.stringify(updatedUser));
+      // If we were registering, this completes it
+      if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
+          setIsRegistering(false);
+      }
   };
 
   if (loading) {
@@ -128,7 +152,12 @@ const App: React.FC = () => {
   return (
     <HashRouter>
         <Routes>
-            <Route path="/" element={<Navigate to="/home" replace />} />
+            <Route path="/" element={<Navigate to={isRegistering ? "/profile" : "/home"} replace />} />
+
+            {/* Force profile for registration */}
+            {isRegistering && (
+                <Route path="*" element={<Navigate to="/profile" replace />} />
+            )}
 
             <Route path="/home" element={
                 <Layout userProfile={user} data={data}>
@@ -190,7 +219,7 @@ const App: React.FC = () => {
 
             <Route path="/profile" element={
                 <Layout userProfile={user} data={data}>
-                    {user ? <ProfileView user={user} data={data} onUpdateUser={handleUpdateUser} /> : <Navigate to="/home" replace />}
+                    {user ? <ProfileView user={user} data={data} onUpdateUser={handleUpdateUser} isRegistrationMode={isRegistering} /> : <Navigate to="/home" replace />}
                 </Layout>
             } />
             
@@ -201,7 +230,7 @@ const App: React.FC = () => {
             <Route path="/summary" element={<Layout userProfile={user} data={data}><SummaryGenerator data={data} user={user} /></Layout>} />
 
             <Route path="/login" element={<LoginScreen onLoginSuccess={handleLogin} />} />
-            <Route path="*" element={<Navigate to="/home" replace />} />
+            <Route path="*" element={<Navigate to={isRegistering ? "/profile" : "/home"} replace />} />
         </Routes>
     </HashRouter>
   );

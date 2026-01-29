@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { AppData, CheckInActivity, CheckInLocation, CheckInUser } from '../types';
 import { MapPin, Camera, Navigation, AlertOctagon, CheckCircle, Loader2, Send, MessageSquare, AlertTriangle, ArrowLeft, RefreshCw, FileCheck } from 'lucide-react';
@@ -33,9 +34,11 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     // 0. Check if already checked in on mount
     useEffect(() => {
         const checkHistory = async () => {
-            if (!user?.UserID || !activityId) return;
+            // Safety check for ID
+            const uid = user?.UserID || user?.userid;
+            if (!uid || !activityId) return;
             try {
-                const logs = await getUserCheckInHistory(user.UserID);
+                const logs = await getUserCheckInHistory(uid);
                 const existing = logs.find((l: any) => l.ActivityID === activityId);
                 if (existing) {
                     setCheckedInDetail(existing);
@@ -109,6 +112,13 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     const handleSubmit = async () => {
         if (!location || !currentPos || !activity) return;
         
+        // Robust User ID check
+        const uid = user.UserID || user.userid;
+        if (!uid) {
+            alert('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+            return;
+        }
+
         setStatus('submitting');
         
         let photoUrl = '';
@@ -118,7 +128,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
         }
 
         const res = await performCheckIn({
-            userId: user.UserID,
+            userId: uid,
             activityId: activity.ActivityID,
             locationId: location.LocationID,
             userLat: currentPos.lat,

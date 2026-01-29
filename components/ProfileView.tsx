@@ -15,7 +15,7 @@ interface ProfileViewProps {
 
 const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isRegistrationMode = false }) => {
   const [prefix, setPrefix] = useState(user.Prefix || '');
-  const [name, setName] = useState(user.Name || user.displayName || '');
+  const [name, setName] = useState(user.Name || '');
   const [surname, setSurname] = useState(user.Surname || '');
   const [tel, setTel] = useState(user.tel || '');
   const [email, setEmail] = useState(user.email || '');
@@ -40,6 +40,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
         setMessage({ type: 'error', text: 'กรุณาระบุชื่อโรงเรียน' });
         return;
     }
+    if (!name || !surname) {
+        setMessage({ type: 'error', text: 'กรุณาระบุชื่อและนามสกุล' });
+        return;
+    }
 
     setIsSaving(true);
     setMessage(null);
@@ -52,7 +56,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
         tel, 
         email, 
         SchoolID: schoolName, // Using SchoolID field to store School Name text
-        Cluster: cluster
+        Cluster: cluster,
+        // Ensure username (LINE Name) is preserved
+        username: user.username,
+        // Ensure LineID is preserved
+        lineId: user.LineID || user.userline_id
     };
 
     try {
@@ -60,11 +68,12 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
        let success = false;
 
        if (isRegistrationMode) {
-           // Call Register API
-           resultUser = await registerUser(userData);
-           success = !!resultUser;
+           // Call Register API (Create new row)
+           const res = await registerUser(userData);
+           success = res.status === 'success';
+           if(success) resultUser = res.user;
        } else {
-           // Call Update API
+           // Call Update API (Update existing row)
            success = await updateUser(userData);
            if (success) resultUser = userData;
        }
@@ -111,6 +120,18 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
+      
+      {/* Registration Mode Header */}
+      {isRegistrationMode && (
+          <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-6 h-6 text-yellow-600 shrink-0 mt-0.5" />
+              <div>
+                  <h3 className="font-bold text-yellow-800">ลงทะเบียนสมาชิกใหม่</h3>
+                  <p className="text-sm text-yellow-700 mt-1">กรุณากรอกข้อมูลส่วนตัวให้ครบถ้วนเพื่อเริ่มใช้งานระบบ</p>
+              </div>
+          </div>
+      )}
+
       {!isRegistrationMode && (
         <div>
             <h2 className="text-2xl font-bold text-gray-800">ข้อมูลส่วนตัว (Profile)</h2>
@@ -134,8 +155,14 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
                         </div>
                     )}
                 </div>
-                <h3 className="text-xl font-bold text-gray-900">{prefix}{name} {surname}</h3>
-                {!isRegistrationMode && <p className="text-sm text-gray-500 mb-4">@{user.Username || 'user'}</p>}
+                {/* Display Formal Name if available, else show Username (LINE Name) */}
+                <h3 className="text-xl font-bold text-gray-900">{name ? `${prefix}${name} ${surname}` : user.username}</h3>
+                
+                {user.username && user.username !== name && (
+                    <p className="text-sm text-gray-500 mb-4 flex items-center justify-center gap-1">
+                        <span className="text-green-600 font-bold">LINE:</span> {user.username}
+                    </p>
+                )}
                 
                 {!isRegistrationMode && (
                     <div className="w-full pt-4 mt-2 border-t border-gray-100">
@@ -180,19 +207,21 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ (Name) *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อจริง (Formal Name) *</label>
                                 <input 
                                     type="text" required
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                     value={name} onChange={(e) => setName(e.target.value)}
+                                    placeholder="ชื่อภาษาไทย"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">นามสกุล *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">นามสกุล (Surname) *</label>
                                 <input 
                                     type="text" required
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                     value={surname} onChange={(e) => setSurname(e.target.value)}
+                                    placeholder="นามสกุลภาษาไทย"
                                 />
                             </div>
                         </div>

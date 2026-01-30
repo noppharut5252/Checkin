@@ -229,16 +229,65 @@ export const shareIdCard = async (
     return shareContent(flexMessage, `Digital ID: ${memberName}`, `${memberName} - ${teamName}\n${appUrl}`);
 }
 
-// 2. Share Check-in Activity
+// 2. Share Check-in Activity (Updated with Floor/Room support)
 export const shareCheckInActivity = async (
     activityName: string,
     locationName: string,
     timeText: string,
     activityId: string,
-    imageUrl?: string
+    imageUrl?: string,
+    floor?: string,
+    room?: string
 ): Promise<{ success: boolean; method: 'line' | 'share' | 'copy' | 'error' }> => {
     const appUrl = `${window.location.origin}${window.location.pathname}#/checkin/${activityId}`;
-    const textSummary = `📍 เช็คอินเข้าร่วมกิจกรรม: ${activityName}\nสถานที่: ${locationName}\nเวลา: ${timeText}\n\nกดลิงก์เพื่อเช็คอิน: ${appUrl}`;
+    
+    // Construct robust details for fallback text
+    let detailText = `สถานที่: ${locationName || 'ไม่ระบุ'}`;
+    if (floor || room) detailText += ` (${floor ? 'ชั้น ' + floor : ''} ${room ? 'ห้อง ' + room : ''})`;
+    const textSummary = `📍 เช็คอินเข้าร่วมกิจกรรม: ${activityName}\n${detailText}\nเวลา: ${timeText}\n\nกดลิงก์เพื่อเช็คอิน: ${appUrl}`;
+
+    // Build contents array dynamically to handle optional fields
+    const bodyContents: any[] = [
+        {
+            "type": "box",
+            "layout": "baseline",
+            "spacing": "sm",
+            "contents": [
+                { "type": "text", "text": "สถานที่", "color": "#aaaaaa", "size": "sm", "flex": 1 },
+                { "type": "text", "text": locationName || 'ไม่ระบุ', "wrap": true, "color": "#666666", "size": "sm", "flex": 4 }
+            ]
+        }
+    ];
+
+    // Add Floor/Room row if data exists
+    if (floor || room) {
+        const floorText = floor ? `ชั้น ${floor}` : '';
+        const roomText = room ? `ห้อง ${room}` : '';
+        const combined = [floorText, roomText].filter(Boolean).join(' / ');
+        
+        if (combined) {
+            bodyContents.push({
+                "type": "box",
+                "layout": "baseline",
+                "spacing": "sm",
+                "contents": [
+                    { "type": "text", "text": "รายละเอียด", "color": "#aaaaaa", "size": "sm", "flex": 1 },
+                    { "type": "text", "text": combined, "wrap": true, "color": "#666666", "size": "sm", "flex": 4 }
+                ]
+            });
+        }
+    }
+
+    // Add Time row
+    bodyContents.push({
+        "type": "box",
+        "layout": "baseline",
+        "spacing": "sm",
+        "contents": [
+            { "type": "text", "text": "เวลา", "color": "#aaaaaa", "size": "sm", "flex": 1 },
+            { "type": "text", "text": timeText || 'ไม่ระบุ', "wrap": true, "color": "#666666", "size": "sm", "flex": 4 }
+        ]
+    });
 
     const flexMessage = {
         type: "flex",
@@ -257,34 +306,15 @@ export const shareCheckInActivity = async (
                 "type": "box",
                 "layout": "vertical",
                 "contents": [
-                { "type": "text", "text": "CHECK-IN", "weight": "bold", "color": "#1DB446", "size": "xs", "action": { "type": "uri", "label": "action", "uri": appUrl } },
-                { "type": "text", "text": activityName, "weight": "bold", "size": "xl", "margin": "md", "wrap": true },
-                {
-                    "type": "box",
-                    "layout": "vertical",
-                    "margin": "lg",
-                    "spacing": "sm",
-                    "contents": [
+                    { "type": "text", "text": "CHECK-IN", "weight": "bold", "color": "#1DB446", "size": "xs", "action": { "type": "uri", "label": "action", "uri": appUrl } },
+                    { "type": "text", "text": activityName || 'Activity', "weight": "bold", "size": "xl", "margin": "md", "wrap": true },
                     {
                         "type": "box",
-                        "layout": "baseline",
+                        "layout": "vertical",
+                        "margin": "lg",
                         "spacing": "sm",
-                        "contents": [
-                        { "type": "text", "text": "สถานที่", "color": "#aaaaaa", "size": "sm", "flex": 1 },
-                        { "type": "text", "text": locationName, "wrap": true, "color": "#666666", "size": "sm", "flex": 4 }
-                        ]
-                    },
-                    {
-                        "type": "box",
-                        "layout": "baseline",
-                        "spacing": "sm",
-                        "contents": [
-                        { "type": "text", "text": "เวลา", "color": "#aaaaaa", "size": "sm", "flex": 1 },
-                        { "type": "text", "text": timeText, "wrap": true, "color": "#666666", "size": "sm", "flex": 4 }
-                        ]
+                        "contents": bodyContents
                     }
-                    ]
-                }
                 ]
             },
             "footer": {
@@ -292,13 +322,13 @@ export const shareCheckInActivity = async (
                 "layout": "vertical",
                 "spacing": "sm",
                 "contents": [
-                {
-                    "type": "button",
-                    "style": "primary",
-                    "height": "sm",
-                    "action": { "type": "uri", "label": "กดเพื่อเช็คอิน", "uri": appUrl },
-                    "color": "#06C755"
-                }
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "height": "sm",
+                        "action": { "type": "uri", "label": "กดเพื่อเช็คอิน", "uri": appUrl },
+                        "color": "#06C755"
+                    }
                 ],
                 "flex": 0
             }

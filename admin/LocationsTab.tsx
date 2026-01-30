@@ -1,8 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { AppData, CheckInLocation } from '../../types';
-import { Search, Plus, MapPin, Edit2, Trash2, ImageIcon } from 'lucide-react';
-import { deleteLocation } from '../../services/api';
+import { Search, Plus, MapPin, Edit2, Trash2, ImageIcon, Upload, Loader2 } from 'lucide-react';
+import { deleteLocation, saveLocation } from '../../services/api';
 import LocationModal from './LocationModal';
 import ConfirmationModal from '../ConfirmationModal';
 
@@ -17,9 +17,13 @@ const LocationsTab: React.FC<LocationsTabProps> = ({ data, onDataUpdate }) => {
     const [editLoc, setEditLoc] = useState<Partial<CheckInLocation>>({});
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; id: string; title: string }>({ isOpen: false, id: '', title: '' });
     const [isDeleting, setIsDeleting] = useState(false);
+    
+    // Import State
+    const [isImporting, setIsImporting] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const filteredLocations = useMemo(() => {
-        return data.checkInLocations.filter(loc => 
+        return (data.checkInLocations || []).filter(loc => 
             loc.Name.toLowerCase().includes(searchLocationQuery.toLowerCase())
         );
     }, [data.checkInLocations, searchLocationQuery]);
@@ -41,7 +45,7 @@ const LocationsTab: React.FC<LocationsTabProps> = ({ data, onDataUpdate }) => {
     };
 
     const handleDeleteClick = (loc: CheckInLocation) => {
-        const relatedActivities = data.checkInActivities.filter(a => a.LocationID === loc.LocationID);
+        const relatedActivities = (data.checkInActivities || []).filter(a => a.LocationID === loc.LocationID);
         if (relatedActivities.length > 0) {
             alert(`ไม่สามารถลบสถานที่ "${loc.Name}" ได้ เนื่องจากมีการใช้งานใน ${relatedActivities.length} กิจกรรม กรุณาลบหรือย้ายกิจกรรมออกก่อน`);
             return;
@@ -57,6 +61,39 @@ const LocationsTab: React.FC<LocationsTabProps> = ({ data, onDataUpdate }) => {
         onDataUpdate();
     };
 
+    const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsImporting(true);
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            const text = evt.target?.result as string;
+            const lines = text.split('\n').filter(l => l.trim());
+            // Skip Header
+            const promises = [];
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(',');
+                // Format: Name, Lat, Lng, Radius, Desc
+                if (cols.length >= 3) {
+                    const newLoc = {
+                        Name: cols[0].trim(),
+                        Latitude: cols[1].trim(),
+                        Longitude: cols[2].trim(),
+                        RadiusMeters: cols[3]?.trim() || '100',
+                        Description: cols[4]?.trim() || ''
+                    };
+                    promises.push(saveLocation(newLoc));
+                }
+            }
+            await Promise.all(promises);
+            setIsImporting(false);
+            alert(`นำเข้าสำเร็จ ${promises.length} รายการ`);
+            onDataUpdate();
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        };
+        reader.readAsText(file);
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex gap-2">
@@ -70,6 +107,15 @@ const LocationsTab: React.FC<LocationsTabProps> = ({ data, onDataUpdate }) => {
                         onChange={(e) => setSearchLocationQuery(e.target.value)}
                     />
                 </div>
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-xl hover:bg-green-100 flex items-center justify-center font-bold text-sm"
+                    disabled={isImporting}
+                >
+                    {isImporting ? <Loader2 className="w-4 h-4 animate-spin"/> : <Upload className="w-4 h-4 mr-1" />} Import CSV
+                </button>
+                <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleImportCSV} />
+                
                 <button 
                     onClick={handleAdd}
                     className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center justify-center font-bold"

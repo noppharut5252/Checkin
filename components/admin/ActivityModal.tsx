@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { CheckInActivity, CheckInLocation } from '../../types';
-import { Loader2, Upload, X, Camera, Save, Layers, Users, Tag, Power, Image } from 'lucide-react';
+import { Loader2, Upload, X, Camera, Save, Layers, Users, Tag, Power, Image, Lock, ShieldAlert } from 'lucide-react';
 import { saveActivity, uploadImage } from '../../services/api';
 import { resizeImage, getThaiDateTimeValue, thaiInputToISO } from '../../services/utils';
 
@@ -30,7 +30,17 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        if (isOpen) setEditAct(initialData);
+        if (isOpen) {
+            // Correctly initialize boolean fields that might come as 'TRUE'/'FALSE' strings or booleans
+            const parseBool = (val: any) => val === true || String(val).toUpperCase() === 'TRUE';
+            
+            setEditAct({
+                ...initialData,
+                RequirePhoto: parseBool(initialData.RequirePhoto),
+                IsLocked: parseBool(initialData.IsLocked),
+                IsAreaLocked: parseBool(initialData.IsAreaLocked)
+            });
+        }
     }, [isOpen, initialData]);
 
     const handleSaveActivity = async () => {
@@ -155,24 +165,94 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
                         </div>
                     </div>
 
-                    {/* Require Photo Toggle */}
-                    <div className="flex items-center gap-3 bg-blue-50 p-3 rounded-lg border border-blue-100">
-                        <div className="p-2 bg-white rounded-full border border-blue-200 text-blue-600">
-                            <Image className="w-5 h-5" />
+                    {/* Competition Rules */}
+                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                        <label className="block text-xs font-bold text-gray-700 mb-2">ข้อกำหนดผู้เข้าแข่งขัน (Requirements)</label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-[10px] text-gray-500 block mb-1">จำนวนนักเรียน</label>
+                                <input 
+                                    type="number" 
+                                    className="w-full border border-gray-300 rounded-lg p-2 text-sm" 
+                                    placeholder="0"
+                                    value={editAct.ReqStudents || ''}
+                                    onChange={e => setEditAct({...editAct, ReqStudents: parseInt(e.target.value) || 0})}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] text-gray-500 block mb-1">จำนวนครูผู้ฝึกสอน</label>
+                                <input 
+                                    type="number" 
+                                    className="w-full border border-gray-300 rounded-lg p-2 text-sm" 
+                                    placeholder="0"
+                                    value={editAct.ReqTeachers || ''}
+                                    onChange={e => setEditAct({...editAct, ReqTeachers: parseInt(e.target.value) || 0})}
+                                />
+                            </div>
                         </div>
-                        <div className="flex-1">
-                            <h4 className="text-sm font-bold text-gray-800">บังคับถ่ายรูป (Require Photo)</h4>
-                            <p className="text-xs text-gray-500">ผู้ใช้ต้องถ่ายรูปยืนยันจึงจะเช็คอินได้</p>
+                    </div>
+
+                    {/* Flags & Toggles */}
+                    <div className="space-y-2">
+                        {/* Require Photo Toggle */}
+                        <div className="flex items-center gap-3 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                            <div className="p-2 bg-white rounded-full border border-blue-200 text-blue-600">
+                                <Image className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1">
+                                <h4 className="text-sm font-bold text-gray-800">บังคับถ่ายรูป (Require Photo)</h4>
+                                <p className="text-[10px] text-gray-500">ผู้ใช้ต้องถ่ายรูปยืนยันจึงจะเช็คอินได้</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    className="sr-only peer" 
+                                    checked={editAct.RequirePhoto === true}
+                                    onChange={(e) => setEditAct({...editAct, RequirePhoto: e.target.checked})}
+                                />
+                                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                            </label>
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                className="sr-only peer" 
-                                checked={editAct.RequirePhoto === true}
-                                onChange={(e) => setEditAct({...editAct, RequirePhoto: e.target.checked})}
-                            />
-                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                        </label>
+
+                        {/* Cluster Lock */}
+                        <div className="flex items-center gap-3 bg-orange-50 p-3 rounded-lg border border-orange-100">
+                            <div className="p-2 bg-white rounded-full border border-orange-200 text-orange-600">
+                                <Lock className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1">
+                                <h4 className="text-sm font-bold text-gray-800">ปิดการแก้ไขระดับกลุ่ม (Cluster Lock)</h4>
+                                <p className="text-[10px] text-gray-500">โรงเรียนจะไม่สามารถแก้ไขข้อมูลทีมได้</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    className="sr-only peer" 
+                                    checked={editAct.IsLocked === true}
+                                    onChange={(e) => setEditAct({...editAct, IsLocked: e.target.checked})}
+                                />
+                                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
+                            </label>
+                        </div>
+
+                        {/* Area Lock */}
+                        <div className="flex items-center gap-3 bg-purple-50 p-3 rounded-lg border border-purple-100">
+                            <div className="p-2 bg-white rounded-full border border-purple-200 text-purple-600">
+                                <ShieldAlert className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1">
+                                <h4 className="text-sm font-bold text-gray-800">ปิดการแก้ไขระดับเขต (Area Lock)</h4>
+                                <p className="text-[10px] text-gray-500">ประธานกลุ่มจะไม่สามารถแก้ไขข้อมูลทีมได้</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    className="sr-only peer" 
+                                    checked={editAct.IsAreaLocked === true}
+                                    onChange={(e) => setEditAct({...editAct, IsAreaLocked: e.target.checked})}
+                                />
+                                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                            </label>
+                        </div>
                     </div>
 
                     <div>

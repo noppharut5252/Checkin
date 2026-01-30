@@ -91,7 +91,26 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
         if (!mission) return { progress: 0, total: 0, isComplete: false, reqStatus: [] };
 
         const missionDate = mission.date;
-        const dailyLogs = userLogs.filter(log => log.Timestamp.startsWith(missionDate));
+        
+        // Robust Date Filtering: Check Day/Month/Year regardless of time/format
+        const dailyLogs = userLogs.filter(log => {
+            if (!log.Timestamp) return false;
+            
+            // 1. Try fast string prefix match (ISO format)
+            if (log.Timestamp.startsWith(missionDate)) return true;
+
+            // 2. Fallback to Date Object comparison (handles Timezones & other formats)
+            const logTime = new Date(log.Timestamp);
+            const targetTime = new Date(missionDate);
+            
+            // Validate dates
+            if (isNaN(logTime.getTime()) || isNaN(targetTime.getTime())) return false;
+
+            // Compare local dates (User's perspective)
+            return logTime.getDate() === targetTime.getDate() &&
+                   logTime.getMonth() === targetTime.getMonth() &&
+                   logTime.getFullYear() === targetTime.getFullYear();
+        });
         
         let completedReqs = 0;
         const reqStatus = mission.requirements.map(req => {
@@ -99,14 +118,15 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
             let currentVal = 0;
 
             if (req.type === 'specific_activity') {
-                const found = dailyLogs.find(l => l.ActivityID === req.targetId);
+                // Robust ID Comparison: Convert to string and trim
+                const found = dailyLogs.find(l => String(l.ActivityID).trim() === String(req.targetId).trim());
                 if (found) { achieved = true; currentVal = 1; }
             } else if (req.type === 'total_count') {
                 currentVal = dailyLogs.length;
                 if (currentVal >= req.targetValue) achieved = true;
             } else if (req.type === 'category_count') {
                 const catLogs = dailyLogs.filter(l => {
-                    const act = data.activities.find(a => a.id === l.ActivityID);
+                    const act = data.activities.find(a => String(a.id) === String(l.ActivityID));
                     return act?.category === req.targetId;
                 });
                 currentVal = catLogs.length;

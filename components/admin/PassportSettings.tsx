@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppData, PassportConfig, PassportMission, PassportRequirement } from '../../types';
-import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle } from 'lucide-react';
+import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown } from 'lucide-react';
 import { savePassportConfig } from '../../services/api';
 import SearchableSelect from '../SearchableSelect';
 
@@ -60,6 +60,16 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         if(!confirm('ยืนยันการลบภารกิจนี้?')) return;
         setConfig(prev => ({ missions: prev.missions.filter(m => m.id !== id) }));
         if (activeMissionId === id) setActiveMissionId(null);
+    };
+
+    const moveMission = (index: number, direction: 'up' | 'down') => {
+        const newMissions = [...config.missions];
+        if (direction === 'up' && index > 0) {
+            [newMissions[index], newMissions[index - 1]] = [newMissions[index - 1], newMissions[index]];
+        } else if (direction === 'down' && index < newMissions.length - 1) {
+            [newMissions[index], newMissions[index + 1]] = [newMissions[index + 1], newMissions[index]];
+        }
+        setConfig(prev => ({ ...prev, missions: newMissions }));
     };
 
     const addRequirement = (missionId: string) => {
@@ -142,30 +152,48 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                         </button>
                     </div>
                     <div className="flex-1 overflow-y-auto max-h-[600px] p-2 space-y-2">
-                        {config.missions.map(m => (
+                        {config.missions.map((m, idx) => (
                             <div 
                                 key={m.id}
                                 onClick={() => setActiveMissionId(m.id)}
-                                className={`p-3 rounded-lg border cursor-pointer transition-all ${activeMissionId === m.id ? 'bg-indigo-50 border-indigo-300 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}
+                                className={`p-3 rounded-lg border cursor-pointer transition-all flex gap-2 ${activeMissionId === m.id ? 'bg-indigo-50 border-indigo-300 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}
                             >
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <div className="font-bold text-sm text-gray-800">{m.title}</div>
-                                        <div className="text-xs text-gray-500 flex items-center mt-1">
-                                            <Calendar className="w-3 h-3 mr-1" /> {new Date(m.date).toLocaleDateString('th-TH')}
-                                        </div>
-                                    </div>
+                                <div className="flex flex-col gap-1 justify-center">
                                     <button 
-                                        onClick={(e) => { e.stopPropagation(); deleteMission(m.id); }}
-                                        className="text-gray-400 hover:text-red-500 p-1"
+                                        onClick={(e) => { e.stopPropagation(); moveMission(idx, 'up'); }}
+                                        disabled={idx === 0}
+                                        className="p-0.5 text-gray-400 hover:text-indigo-600 disabled:opacity-30 hover:bg-gray-100 rounded"
                                     >
-                                        <Trash2 className="w-4 h-4" />
+                                        <ArrowUp className="w-3 h-3" />
+                                    </button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); moveMission(idx, 'down'); }}
+                                        disabled={idx === config.missions.length - 1}
+                                        className="p-0.5 text-gray-400 hover:text-indigo-600 disabled:opacity-30 hover:bg-gray-100 rounded"
+                                    >
+                                        <ArrowDown className="w-3 h-3" />
                                     </button>
                                 </div>
-                                <div className="mt-2 flex gap-1">
-                                    <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-600">
-                                        {m.requirements.length} เงื่อนไข
-                                    </span>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-start">
+                                        <div className="truncate">
+                                            <div className="font-bold text-sm text-gray-800 truncate">{m.title}</div>
+                                            <div className="text-xs text-gray-500 flex items-center mt-1">
+                                                <Calendar className="w-3 h-3 mr-1" /> {new Date(m.date).toLocaleDateString('th-TH')}
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); deleteMission(m.id); }}
+                                            className="text-gray-400 hover:text-red-500 p-1"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    <div className="mt-2 flex gap-1">
+                                        <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                                            {m.requirements.length} เงื่อนไข
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -198,12 +226,12 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                             </div>
                             
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1">รายละเอียด / คำอธิบาย</label>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">รายละเอียด / คำอธิบาย (รองรับการขึ้นบรรทัดใหม่)</label>
                                 <textarea 
-                                    className="w-full border rounded p-2 text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                    className="w-full border rounded p-2 text-sm h-28 resize-none focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed" 
                                     value={activeMission.description || ''} 
                                     onChange={e => updateMission(activeMission.id, 'description', e.target.value)}
-                                    placeholder="เช่น ต้องเข้าร่วมกิจกรรมหลักและเก็บแต้มให้ครบ..."
+                                    placeholder="เช่น ต้องเข้าร่วมกิจกรรมหลัก...&#10;1. กิจกรรม A&#10;2. กิจกรรม B"
                                 />
                             </div>
 

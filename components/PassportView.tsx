@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { AppData, User, PassportMission, CheckInLog } from '../types';
 import { Award, CheckCircle, Target, ShieldCheck, Lock, Star, Zap, Crown, Flame, Calendar } from 'lucide-react';
@@ -247,7 +248,8 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                                 {item.achieved ? <CheckCircle className="w-6 h-6" /> : <Lock className="w-5 h-5" />}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <h4 className={`text-sm font-bold truncate ${item.achieved ? 'text-indigo-900' : 'text-gray-500'}`}>{item.label}</h4>
+                                                {/* Modified: Allow text wrapping, remove truncate */}
+                                                <h4 className={`text-sm font-bold leading-tight ${item.achieved ? 'text-indigo-900' : 'text-gray-500'}`}>{item.label}</h4>
                                                 <div className="flex items-center gap-2 mt-1">
                                                     <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                                                         <div 

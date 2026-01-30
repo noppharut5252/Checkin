@@ -23,6 +23,7 @@ import PublicResultView from './components/PublicResultView';
 import SummaryGenerator from './components/SummaryGenerator';
 import UserManagement from './components/UserManagement';
 import AnnouncementsView from './components/AnnouncementsView';
+import PassportView from './components/PassportView';
 
 const App: React.FC = () => {
   const [data, setData] = useState<AppData>({ 
@@ -37,7 +38,8 @@ const App: React.FC = () => {
       venues: [],
       judges: [],
       activityStatus: [],
-      appConfig: undefined
+      appConfig: undefined,
+      passportConfig: undefined
   });
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -223,6 +225,12 @@ const App: React.FC = () => {
                 </Layout>
             } />
             
+            <Route path="/passport" element={
+                <Layout userProfile={user} data={data}>
+                    {user ? <PassportView data={data} user={user} /> : <Navigate to="/login" replace />}
+                </Layout>
+            } />
+
             <Route path="/activities" element={
                 <Layout userProfile={user} data={data}>
                     <ActivityList data={data} />

@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppData, PassportConfig, PassportMission, PassportRequirement } from '../../types';
-import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X } from 'lucide-react';
+import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle } from 'lucide-react';
 import { savePassportConfig } from '../../services/api';
 import SearchableSelect from '../SearchableSelect';
 
@@ -14,13 +14,27 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     const [config, setConfig] = useState<PassportConfig>(data.passportConfig || { missions: [] });
     const [isSaving, setIsSaving] = useState(false);
     const [activeMissionId, setActiveMissionId] = useState<string | null>(null);
+    const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+    // Auto-hide alert after 3 seconds
+    useEffect(() => {
+        if (alertMessage) {
+            const timer = setTimeout(() => setAlertMessage(null), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [alertMessage]);
 
     const handleSave = async () => {
         setIsSaving(true);
-        await savePassportConfig(config);
-        setIsSaving(false);
-        alert('บันทึกการตั้งค่า Passport เรียบร้อยแล้ว');
-        onDataUpdate();
+        try {
+            await savePassportConfig(config);
+            setAlertMessage({ type: 'success', text: 'บันทึกการตั้งค่าเรียบร้อยแล้ว' });
+            onDataUpdate();
+        } catch (e) {
+            setAlertMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการบันทึก' });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const addMission = () => {
@@ -90,7 +104,17 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     const activeMission = config.missions.find(m => m.id === activeMissionId);
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 relative">
+            
+            {/* Toast Notification */}
+            {alertMessage && (
+                <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[300] px-6 py-3 rounded-full shadow-xl flex items-center animate-in slide-in-from-top-5 fade-in duration-300 ${alertMessage.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                    {alertMessage.type === 'success' ? <CheckCircle className="w-5 h-5 mr-2" /> : <AlertTriangle className="w-5 h-5 mr-2" />}
+                    <span className="font-bold text-sm">{alertMessage.text}</span>
+                    <button onClick={() => setAlertMessage(null)} className="ml-4 opacity-80 hover:opacity-100"><X className="w-4 h-4"/></button>
+                </div>
+            )}
+
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
                 <div>
                     <h2 className="text-xl font-bold text-gray-800 flex items-center">
@@ -101,7 +125,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                 <button 
                     onClick={handleSave} 
                     disabled={isSaving}
-                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold flex items-center hover:bg-indigo-700 disabled:opacity-70"
+                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold flex items-center hover:bg-indigo-700 disabled:opacity-70 shadow-sm transition-all active:scale-95"
                 >
                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Save className="w-4 h-4 mr-2"/>}
                     บันทึกทั้งหมด
@@ -157,7 +181,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 mb-1">ชื่อภารกิจ</label>
                                     <input 
-                                        className="w-full border rounded p-2 text-sm" 
+                                        className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
                                         value={activeMission.title} 
                                         onChange={e => updateMission(activeMission.id, 'title', e.target.value)}
                                     />
@@ -166,7 +190,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                     <label className="block text-xs font-bold text-gray-500 mb-1">วันที่ (Date)</label>
                                     <input 
                                         type="date" 
-                                        className="w-full border rounded p-2 text-sm" 
+                                        className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
                                         value={activeMission.date} 
                                         onChange={e => updateMission(activeMission.id, 'date', e.target.value)}
                                     />
@@ -176,7 +200,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 mb-1">รายละเอียด / คำอธิบาย</label>
                                 <textarea 
-                                    className="w-full border rounded p-2 text-sm h-20 resize-none" 
+                                    className="w-full border rounded p-2 text-sm h-20 resize-none focus:ring-2 focus:ring-indigo-500 outline-none" 
                                     value={activeMission.description || ''} 
                                     onChange={e => updateMission(activeMission.id, 'description', e.target.value)}
                                     placeholder="เช่น ต้องเข้าร่วมกิจกรรมหลักและเก็บแต้มให้ครบ..."

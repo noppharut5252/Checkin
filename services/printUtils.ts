@@ -52,7 +52,7 @@ export const generatePosterHTML = async (
                             <div class="loc-badge">📍 ${p.loc?.Name || 'ไม่ระบุสถานที่'}</div>
                             ${customNote ? `<div class="custom-note">Note: ${customNote}</div>` : ''}
                         </div>
-                        <div class="footer"><div class="footer-text">ระบบเช็คอินกิจกรรม CompManager • ID: ${p.act.ActivityID}</div></div>
+                        <div class="footer"><div class="footer-text">ระบบเช็คอิน UprightSchool • ID: ${p.act.ActivityID}</div></div>
                     </div>
                 `).join('')}
             </body>

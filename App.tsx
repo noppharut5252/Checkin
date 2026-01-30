@@ -44,8 +44,12 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
   
-  // Store the intended destination if user needs to register first
-  const [pendingRedirect, setPendingRedirect] = useState<string | null>(null);
+  // Use sessionStorage for pendingRedirect to survive LIFF redirects
+  const getPendingRedirect = () => sessionStorage.getItem('pendingRedirect');
+  const setPendingRedirect = (path: string | null) => {
+      if (path) sessionStorage.setItem('pendingRedirect', path);
+      else sessionStorage.removeItem('pendingRedirect');
+  };
 
   const loadData = async () => {
       setLoading(true);
@@ -75,9 +79,11 @@ const App: React.FC = () => {
           // Capture current hash path before LIFF init/redirect logic
           // This handles cases where user clicks a Flex Message link like .../#/checkin/ACT-001
           const currentHash = window.location.hash;
-          if (currentHash && currentHash !== '#/' && currentHash !== '#/home') {
-              // Store path without the '#'
-              setPendingRedirect(currentHash.substring(1));
+          if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login')) {
+              // Store path without the '#' if not already set (preserve earliest intent)
+              if (!getPendingRedirect()) {
+                  setPendingRedirect(currentHash.substring(1));
+              }
           }
 
           // Try LIFF Init
@@ -119,11 +125,16 @@ const App: React.FC = () => {
       setIsRegistering(false);
       localStorage.setItem('comp_user', JSON.stringify(u));
       
-      // If there was a pending redirect (e.g. from Deep Link), clear it here 
-      // but the Router will handle the navigation if we don't interfere.
-      // However, for the flow: Click Link -> Login Process -> App Mounts -> Router sees URL
-      // The router should handle it automatically if we are just logging in.
-      // But if we went to Register mode, we need to handle redirect manually after update.
+      // Check for pending redirect
+      const redirect = getPendingRedirect();
+      if (redirect) {
+          // Clear it
+          setPendingRedirect(null);
+          // Allow UI to update then redirect
+          setTimeout(() => {
+              window.location.hash = redirect;
+          }, 100);
+      }
   };
 
   const handleUpdateUser = (updatedUser: User) => {
@@ -134,10 +145,10 @@ const App: React.FC = () => {
       if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
           setIsRegistering(false);
           
-          // Redirect to the originally intended page if it exists
-          if (pendingRedirect) {
-              window.location.hash = pendingRedirect;
+          const redirect = getPendingRedirect();
+          if (redirect) {
               setPendingRedirect(null);
+              window.location.hash = redirect;
           }
       }
   };
@@ -242,7 +253,7 @@ const App: React.FC = () => {
             <Route path="/checkin/:activityId" element={
                 user ? (
                     <CheckInView data={data} user={user} />
-                ) : <Navigate to="/home" replace />
+                ) : <Navigate to="/login" replace />
             } />
 
             <Route path="/profile" element={

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Loader2, User, Trash2 } from 'lucide-react';
+import { Search, Loader2, User, Trash2, Download } from 'lucide-react';
 import { getCheckInLogs, deleteCheckInLog } from '../../services/api';
 import ConfirmationModal from '../ConfirmationModal';
 
@@ -48,6 +48,30 @@ const LogsTab: React.FC<LogsTabProps> = ({ initialSearchQuery = '' }) => {
         setDeleteModal(prev => ({ ...prev, isOpen: false }));
     };
 
+    const handleExportCSV = () => {
+        const headers = ['Timestamp', 'UserName', 'UserID', 'ActivityName', 'LocationName', 'Distance'];
+        const csvContent = [
+            headers.join(','),
+            ...filteredLogs.map(log => [
+                `"${new Date(log.Timestamp).toLocaleString()}"`,
+                `"${log.UserName}"`,
+                `"${log.UserID}"`,
+                `"${log.ActivityName}"`,
+                `"${log.LocationName}"`,
+                log.Distance
+            ].join(','))
+        ].join('\n');
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `checkin_logs_${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex gap-2 mb-4">
@@ -61,6 +85,12 @@ const LogsTab: React.FC<LogsTabProps> = ({ initialSearchQuery = '' }) => {
                         onChange={(e) => setSearchLogsQuery(e.target.value)}
                     />
                 </div>
+                <button 
+                    onClick={handleExportCSV}
+                    className="px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-xl hover:bg-green-100 flex items-center font-bold text-sm"
+                >
+                    <Download className="w-4 h-4 mr-1" /> Export CSV
+                </button>
             </div>
 
             {isLoadingLogs ? (

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { User } from '../types';
 import { loginStandardUser } from '../services/api';
 import { loginLiff } from '../services/liff';
-import { Trophy, User as UserIcon, Lock, Loader2, CheckCircle, ArrowRight, AlertCircle, LogIn } from 'lucide-react';
+import { User as UserIcon, Lock, Loader2, CheckCircle, AlertCircle, LogIn } from 'lucide-react';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: User) => void;
@@ -109,15 +109,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
             <div className="bg-[#00247D] p-8 text-center relative overflow-hidden">
                 <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
-                <div className="absolute -right-6 -top-6 text-white/5 transform rotate-12">
-                    <Trophy className="w-40 h-40" />
+                
+                <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg relative z-10 border-4 border-[#EF3340] p-3">
+                    <img 
+                        src="https://raw.githubusercontent.com/noppharut5252/Checkin/refs/heads/main/logo/logo.png" 
+                        alt="Logo"
+                        className="w-full h-full object-contain"
+                    />
                 </div>
-
-                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg relative z-10 border-4 border-[#EF3340]">
-                    <Trophy className="w-10 h-10 text-[#FFC107]" /> {/* Gold Trophy */}
-                </div>
-                <h1 className="text-2xl font-bold text-white relative z-10 tracking-wide">CompManager</h1>
-                <p className="text-blue-100 text-sm mt-1 relative z-10 font-light">ระบบบริหารจัดการการแข่งขันวิชาการ</p>
+                <h1 className="text-2xl font-bold text-white relative z-10 tracking-wide">UprightSchool</h1>
+                <p className="text-blue-100 text-[10px] mt-2 relative z-10 font-light leading-tight px-4">
+                    กิจกรรมการเรียนรู้ ภายใต้โครงการเสริมสร้างคุณธรรม จริยธรรมและธรรมาภิบาลในสถานศึกษา และสำนักงานเขตพื้นที่การศึกษา (โครงการโรงเรียนสุจริต) ประจำปีงบประมาณ พ.ศ. 2568 ระดับประเทศ
+                </p>
             </div>
 
             <div className="p-8">

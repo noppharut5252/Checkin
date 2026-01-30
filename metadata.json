@@ -1,7 +1,7 @@
 
 {
-  "name": "Check - in",
-  "description": "A comprehensive dashboard to manage academic competitions, tracking teams, schools, scores, and file submissions using Google Sheets as a database.",
+  "name": "UprightSchool",
+  "description": "กิจกรรมการเรียนรู้ ภายใต้โครงการเสริมสร้างคุณธรรม จริยธรรมและธรรมาภิบาลในสถานศึกษา และสำนักงานเขตพื้นที่การศึกษา (โครงการโรงเรียนสุจริต) ประจำปีงบประมาณ พ.ศ. 2568 ระดับประเทศ",
   "requestFramePermissions": [
     "camera",
     "geolocation"

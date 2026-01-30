@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { AppData, User, PassportMission, CheckInLog } from '../types';
-import { Award, CheckCircle, Target, ShieldCheck, Lock, Star, Zap, Crown, Flame, Calendar } from 'lucide-react';
+import { Award, CheckCircle, Target, ShieldCheck, Lock, Star, Zap, Crown, Flame, Calendar, RefreshCw } from 'lucide-react';
 import { getUserCheckInHistory } from '../services/api';
 
 interface PassportViewProps {
@@ -46,24 +46,32 @@ const PassportSkeleton = () => (
 const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
     const [userLogs, setUserLogs] = useState<CheckInLog[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [activeDate, setActiveDate] = useState<string>('');
+
+    const fetchLogs = async () => {
+        try {
+            const logs = await getUserCheckInHistory(user.userid);
+            setUserLogs(logs);
+        } catch (e) { console.error(e); }
+    };
 
     // Initialize & Fetch
     React.useEffect(() => {
         const init = async () => {
             setLoading(true);
-            try {
-                // Minimum loading time for smooth transition
-                const [logs] = await Promise.all([
-                    getUserCheckInHistory(user.userid),
-                    new Promise(resolve => setTimeout(resolve, 800))
-                ]);
-                setUserLogs(logs);
-            } catch (e) { console.error(e); }
+            await fetchLogs();
             setLoading(false);
         };
         init();
     }, [user.userid]);
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        await fetchLogs();
+        // Add artificial delay for visual feedback
+        setTimeout(() => setRefreshing(false), 800);
+    };
 
     const missions = useMemo(() => {
         return data.passportConfig?.missions || [];
@@ -150,6 +158,16 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
             
             {/* 1. Header Stats (Gamified) */}
             <div className="bg-gradient-to-r from-[#1e1b4b] via-[#312e81] to-[#4338ca] rounded-3xl shadow-2xl p-6 text-white relative overflow-hidden border border-indigo-700">
+                
+                {/* Refresh Button */}
+                <button 
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                    className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-20 backdrop-blur-sm"
+                >
+                    <RefreshCw className={`w-5 h-5 text-white/80 ${refreshing ? 'animate-spin' : ''}`} />
+                </button>
+
                 {/* Background Pattern */}
                 <div className="absolute top-0 right-0 p-8 opacity-10">
                     <Award className="w-48 h-48 transform rotate-12" />
@@ -218,8 +236,8 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
 
             {/* 3. Main Mission Card */}
             {currentMission && stats ? (
-                <div className="relative">
-                    <div className="bg-white rounded-[32px] shadow-xl overflow-hidden border border-indigo-50 relative z-10">
+                <div className="relative animate-in slide-in-from-bottom-2 duration-500 fade-in fill-mode-backwards" key={currentMission.id}>
+                    <div className="bg-white rounded-[32px] shadow-xl overflow-hidden border border-indigo-50 relative z-10 transition-all">
                         {/* Status Strip */}
                         <div className={`h-2 w-full ${stats.isComplete ? 'bg-gradient-to-r from-green-400 to-emerald-500' : 'bg-gray-100'}`}></div>
                         
@@ -228,7 +246,9 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                 <div>
                                     <h2 className="text-2xl font-bold text-gray-800 leading-tight">{currentMission.title}</h2>
                                     {currentMission.description && (
-                                        <p className="text-sm text-gray-500 mt-2 leading-relaxed max-w-sm">{currentMission.description}</p>
+                                        <p className="text-sm text-gray-500 mt-2 leading-relaxed max-w-sm whitespace-pre-line">
+                                            {currentMission.description}
+                                        </p>
                                     )}
                                 </div>
                                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border ${stats.isComplete ? 'bg-green-50 border-green-200 text-green-600' : 'bg-indigo-50 border-indigo-100 text-indigo-600'}`}>

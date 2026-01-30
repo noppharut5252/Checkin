@@ -136,10 +136,22 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
         return { totalCheckIns, level, nextLevel, progressToNext };
     }, [userLogs]);
 
+    // Helper to get soft theme based on reward color
+    const getTheme = (colorClass: string) => {
+        if (colorClass.includes('yellow')) return { bg: 'bg-yellow-50', border: 'border-yellow-100', text: 'text-yellow-800' };
+        if (colorClass.includes('orange')) return { bg: 'bg-orange-50', border: 'border-orange-100', text: 'text-orange-800' };
+        if (colorClass.includes('blue')) return { bg: 'bg-blue-50', border: 'border-blue-100', text: 'text-blue-800' };
+        if (colorClass.includes('purple')) return { bg: 'bg-purple-50', border: 'border-purple-100', text: 'text-purple-800' };
+        if (colorClass.includes('green')) return { bg: 'bg-green-50', border: 'border-green-100', text: 'text-green-800' };
+        if (colorClass.includes('gray')) return { bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-800' };
+        return { bg: 'bg-white', border: 'border-gray-100', text: 'text-gray-800' };
+    };
+
     if (loading) return <PassportSkeleton />;
 
     const currentMission = missions.find(m => m.date === activeDate);
     const stats = currentMission ? calculateProgress(currentMission) : null;
+    const theme = currentMission ? getTheme(currentMission.rewardColor) : getTheme('');
 
     if (missions.length === 0) {
         return (
@@ -237,39 +249,41 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
             {/* 3. Main Mission Card */}
             {currentMission && stats ? (
                 <div className="relative animate-in slide-in-from-bottom-2 duration-500 fade-in fill-mode-backwards" key={currentMission.id}>
-                    <div className="bg-white rounded-[32px] shadow-xl overflow-hidden border border-indigo-50 relative z-10 transition-all">
+                    {/* Dynamic Background Card */}
+                    <div className={`${theme.bg} rounded-[32px] shadow-xl overflow-hidden border ${theme.border} relative z-10 transition-all duration-500`}>
                         {/* Status Strip */}
-                        <div className={`h-2 w-full ${stats.isComplete ? 'bg-gradient-to-r from-green-400 to-emerald-500' : 'bg-gray-100'}`}></div>
+                        <div className={`h-2 w-full ${stats.isComplete ? 'bg-gradient-to-r from-green-400 to-emerald-500' : 'bg-gray-200/50'}`}></div>
                         
                         <div className="p-6 md:p-8">
                             <div className="flex justify-between items-start mb-6">
                                 <div>
-                                    <h2 className="text-2xl font-bold text-gray-800 leading-tight">{currentMission.title}</h2>
+                                    <h2 className={`text-2xl font-bold leading-tight ${theme.text}`}>{currentMission.title}</h2>
                                     {currentMission.description && (
                                         <p className="text-sm text-gray-500 mt-2 leading-relaxed max-w-sm whitespace-pre-line">
                                             {currentMission.description}
                                         </p>
                                     )}
                                 </div>
-                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border ${stats.isComplete ? 'bg-green-50 border-green-200 text-green-600' : 'bg-indigo-50 border-indigo-100 text-indigo-600'}`}>
+                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border bg-white ${stats.isComplete ? 'border-green-200 text-green-600' : `${theme.border} text-gray-400`}`}>
                                     {stats.isComplete ? <Crown className="w-6 h-6 fill-current animate-bounce" /> : <Target className="w-6 h-6" />}
                                 </div>
                             </div>
 
-                            {/* Requirements Grid */}
+                            {/* Requirements Grid with Staggered Animation */}
                             <div className="grid grid-cols-1 gap-3 mb-8">
                                 {stats.reqStatus.map((item, idx) => (
                                     <div 
                                         key={item.id} 
-                                        className={`group relative p-4 rounded-2xl border transition-all duration-300 overflow-hidden ${item.achieved ? 'bg-gradient-to-r from-indigo-50 to-white border-indigo-200 shadow-md' : 'bg-gray-50 border-dashed border-gray-200 opacity-80'}`}
+                                        className={`group relative p-4 rounded-2xl border transition-all duration-300 overflow-hidden animate-in slide-in-from-bottom-3 fade-in fill-mode-backwards ${item.achieved ? 'bg-white border-green-200 shadow-md ring-1 ring-green-100' : 'bg-white/60 border-dashed border-gray-300 opacity-80 hover:opacity-100 hover:bg-white'}`}
+                                        style={{ animationDelay: `${idx * 100}ms` }}
                                     >
                                         <div className="flex items-center gap-4 relative z-10">
-                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors ${item.achieved ? 'bg-green-500 text-white shadow-lg shadow-green-200' : 'bg-gray-200 text-gray-400'}`}>
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors ${item.achieved ? 'bg-green-500 text-white shadow-lg shadow-green-200' : 'bg-gray-100 text-gray-400'}`}>
                                                 {item.achieved ? <CheckCircle className="w-6 h-6" /> : <Lock className="w-5 h-5" />}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 {/* Modified: Allow text wrapping, remove truncate */}
-                                                <h4 className={`text-sm font-bold leading-tight ${item.achieved ? 'text-indigo-900' : 'text-gray-500'}`}>{item.label}</h4>
+                                                <h4 className={`text-sm font-bold leading-tight ${item.achieved ? 'text-gray-800' : 'text-gray-500'}`}>{item.label}</h4>
                                                 <div className="flex items-center gap-2 mt-1">
                                                     <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                                                         <div 
@@ -284,7 +298,7 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                             </div>
                                         </div>
                                         {/* Shine Effect */}
-                                        {item.achieved && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 pointer-events-none"></div>}
+                                        {item.achieved && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-green-100/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 pointer-events-none"></div>}
                                     </div>
                                 ))}
                             </div>

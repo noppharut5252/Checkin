@@ -78,6 +78,9 @@ export interface CheckInLog {
   Status: string;
   PhotoURL?: string;
   Comment?: string;
+  UserLat?: number;
+  UserLng?: number;
+  Distance?: number;
   // Enriched fields
   UserName?: string;
   ActivityName?: string;

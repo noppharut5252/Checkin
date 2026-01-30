@@ -22,7 +22,8 @@ export interface CheckInActivity {
   EndDateTime?: string;
   Capacity?: number;
   CurrentCount?: number;
-  Image?: string; // Added Image property
+  Image?: string; 
+  ManualOverride?: 'OPEN' | 'CLOSED' | ''; // New field for Emergency Toggle
 }
 
 export interface CheckInUser {
@@ -46,8 +47,8 @@ export interface CheckInUser {
   role?: string;
   pictureUrl?: string;
   
-  SchoolID?: string; // Used for School Name (Text)
-  Cluster?: string; // Added Cluster field
+  SchoolID?: string; 
+  Cluster?: string; 
   schoolId?: string;
   level?: string;
   isGuest?: boolean;
@@ -68,6 +69,10 @@ export interface CheckInLog {
   Status: string;
   PhotoURL?: string;
   Comment?: string;
+  // Enriched fields
+  UserName?: string;
+  ActivityName?: string;
+  LocationName?: string;
 }
 
 export type User = CheckInUser;
@@ -91,7 +96,7 @@ export interface Team {
   schoolId: string;
   level: string;
   contact: string;
-  members: string; // JSON string
+  members: string; 
   reqInfo?: string;
   status: string | TeamStatus;
   logoUrl?: string;
@@ -102,7 +107,7 @@ export interface Team {
   medalOverride?: string;
   rank?: string;
   flag?: string;
-  stageInfo?: string; // JSON string for AreaStageInfo
+  stageInfo?: string; 
   stageStatus?: string;
   lastEditedBy?: string;
   lastEditedAt?: string;
@@ -178,12 +183,10 @@ export interface Announcement {
   author?: string;
   link?: string;
   clusterId?: string;
-  
-  // New Fields
   coverImage?: string;
-  images?: string[]; // Array of image URLs/IDs
+  images?: string[]; 
   attachments?: Attachment[];
-  likes?: string[]; // Array of UserIDs who liked
+  likes?: string[]; 
   comments?: Comment[];
 }
 
@@ -295,9 +298,7 @@ export interface AppConfig {
   [key: string]: boolean | undefined;
 }
 
-export interface PrintConfig {
-    // Add specific print config properties if any, otherwise empty interface
-}
+export interface PrintConfig {}
 
 export interface AppData {
   checkInLocations: CheckInLocation[];

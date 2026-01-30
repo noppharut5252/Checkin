@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { AppData, CheckInUser } from '../types';
-import { MapPin, Navigation, Search, LocateFixed, Loader2, Clock, Users, QrCode, ScanLine, History, LayoutGrid, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MapPin, Navigation, Search, LocateFixed, Loader2, Clock, Users, QrCode, ScanLine, History, LayoutGrid, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import QRScannerModal from './QRScannerModal';
 import CheckInHistory from './CheckInHistory';
@@ -17,6 +17,7 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
     const [currentPos, setCurrentPos] = useState<{ lat: number, lng: number } | null>(null);
     const [loadingLocation, setLoadingLocation] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'upcoming' | 'ended'>('all');
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     
     // Pagination State
@@ -35,10 +36,10 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
         } else { setLoadingLocation(false); }
     }, []);
 
-    // Reset pagination when search changes
+    // Reset pagination when search/filter changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm]);
+    }, [searchTerm, statusFilter]);
 
     const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
         const R = 6371e3;
@@ -68,21 +69,22 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
 
             // Time & Capacity Logic
             let status = 'Available';
+            let statusKey = 'active';
             let statusColor = 'text-green-600 bg-green-50';
             
             // Manual Override takes precedence
             if (act.ManualOverride === 'CLOSED') {
-                status = 'Ended'; statusColor = 'text-red-600 bg-red-50';
+                status = 'Closed'; statusKey = 'ended'; statusColor = 'text-red-600 bg-red-50';
             } else if (act.ManualOverride === 'OPEN') {
-                status = 'Available'; statusColor = 'text-green-600 bg-green-50';
+                status = 'Available'; statusKey = 'active'; statusColor = 'text-green-600 bg-green-50';
             } else {
                 if (act.StartDateTime && new Date(act.StartDateTime) > now) {
-                    status = 'Not Started'; statusColor = 'text-orange-600 bg-orange-50';
+                    status = 'Upcoming'; statusKey = 'upcoming'; statusColor = 'text-orange-600 bg-orange-50';
                 } else if (act.EndDateTime && new Date(act.EndDateTime) < now) {
-                    status = 'Ended'; statusColor = 'text-gray-500 bg-gray-100';
+                    status = 'Ended'; statusKey = 'ended'; statusColor = 'text-gray-500 bg-gray-100';
                 } else if (act.Capacity && act.Capacity > 0) {
                     if ((act.CurrentCount || 0) >= act.Capacity) {
-                        status = 'Full'; statusColor = 'text-red-600 bg-red-50';
+                        status = 'Full'; statusKey = 'active'; statusColor = 'text-red-600 bg-red-50';
                     }
                 }
             }
@@ -93,19 +95,22 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
                 distance,
                 is_nearby,
                 computedStatus: status,
+                statusKey,
                 statusColor
             };
-        }).filter(a => 
-            (a.Name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-            (a.locationName || '').toLowerCase().includes(searchTerm.toLowerCase())
-        ).sort((a, b) => {
+        }).filter(a => {
+            const matchesSearch = (a.Name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                  (a.locationName || '').toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesFilter = statusFilter === 'all' || a.statusKey === statusFilter;
+            return matchesSearch && matchesFilter;
+        }).sort((a, b) => {
             // Sort by status priority (Available > Not Started > Full/Ended) then distance
             const scoreA = a.computedStatus === 'Available' ? 0 : 1;
             const scoreB = b.computedStatus === 'Available' ? 0 : 1;
             if (scoreA !== scoreB) return scoreA - scoreB;
             return a.distance - b.distance;
         });
-    }, [data.checkInActivities, data.checkInLocations, currentPos, searchTerm]);
+    }, [data.checkInActivities, data.checkInLocations, currentPos, searchTerm, statusFilter]);
 
     // Pagination Logic
     const totalPages = Math.ceil(activitiesList.length / itemsPerPage);
@@ -183,15 +188,32 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
                 <CheckInHistory user={user} />
             ) : (
                 <div className="px-1">
-                    <div className="relative mt-2 mb-6">
-                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                        <input 
-                            type="text" 
-                            placeholder="ค้นหากิจกรรมใกล้ตัว..." 
-                            className="w-full bg-white border border-gray-200 rounded-xl pl-9 pr-4 py-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
-                            value={searchTerm} 
-                            onChange={(e) => setSearchTerm(e.target.value)} 
-                        />
+                    <div className="flex flex-col sm:flex-row gap-3 mt-2 mb-4">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                            <input 
+                                type="text" 
+                                placeholder="ค้นหากิจกรรมใกล้ตัว..." 
+                                className="w-full bg-white border border-gray-200 rounded-xl pl-9 pr-4 py-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
+                                value={searchTerm} 
+                                onChange={(e) => setSearchTerm(e.target.value)} 
+                            />
+                        </div>
+                        
+                        {/* Status Filter */}
+                        <div className="relative w-full sm:w-40">
+                            <Filter className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" />
+                            <select
+                                className="w-full bg-white border border-gray-200 rounded-xl pl-9 pr-4 py-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none cursor-pointer"
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value as any)}
+                            >
+                                <option value="all">ทั้งหมด</option>
+                                <option value="active">เปิดลงทะเบียน</option>
+                                <option value="upcoming">ยังไม่เริ่ม</option>
+                                <option value="ended">จบแล้ว</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-gray-500 mb-3 px-1">
@@ -217,17 +239,19 @@ const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user 
                                         onClick={() => { if (isAvailable) setIsScannerOpen(true); }}
                                         className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col gap-2 transition-all ${isAvailable ? 'cursor-pointer hover:shadow-md active:scale-95 border-l-4 border-l-blue-500' : 'opacity-60 cursor-not-allowed grayscale border-l-4 border-l-gray-300'}`}
                                     >
+                                        {/* Status Badge */}
+                                        <div className="flex justify-end mb-1">
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap shadow-sm ${act.statusColor}`}>
+                                                {act.computedStatus}
+                                            </span>
+                                        </div>
+
                                         <div className="flex items-start gap-4">
                                             <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${act.is_nearby && isAvailable ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
                                                 {act.is_nearby ? <MapPin className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="flex justify-between items-start">
-                                                    <h3 className="font-bold text-gray-900 text-sm truncate pr-2">{act.Name}</h3>
-                                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold whitespace-nowrap ${act.statusColor}`}>
-                                                        {act.computedStatus}
-                                                    </span>
-                                                </div>
+                                                <h3 className="font-bold text-gray-900 text-sm truncate pr-2">{act.Name}</h3>
                                                 <p className="text-xs text-gray-500 flex items-center mt-1 truncate">
                                                     <Navigation className="w-3 h-3 mr-1 shrink-0" /> {act.locationName}
                                                 </p>

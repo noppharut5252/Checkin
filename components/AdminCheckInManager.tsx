@@ -74,7 +74,8 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
             {activeTab === 'locations' && <LocationsTab data={data} onDataUpdate={onDataUpdate} />}
             {activeTab === 'activities' && <ActivitiesTab data={data} onDataUpdate={onDataUpdate} onViewLogs={handleViewLogs} />}
             {activeTab === 'passport' && <PassportSettings data={data} onDataUpdate={onDataUpdate} />}
-            {activeTab === 'logs' && <LogsTab initialSearchQuery={logSearchQuery} />}
+            {/* Updated LogsTab to receive 'data' prop */}
+            {activeTab === 'logs' && <LogsTab initialSearchQuery={logSearchQuery} data={data} />}
             {activeTab === 'printables' && <PrintablesTab data={data} />}
             {activeTab === 'live' && <LiveMonitorTab data={data} />}
         </div>

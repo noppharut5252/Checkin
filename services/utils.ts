@@ -108,3 +108,31 @@ export const getCroppedImg = (imageSrc: string, pixelCrop: any, outputFormat: st
         }
     });
 };
+
+// --- Timezone Utilities (Thailand: Asia/Bangkok) ---
+
+export const getThaiDateTimeValue = (isoString?: string) => {
+    if (!isoString) return '';
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '';
+    
+    // Create date string in 'en-CA' (YYYY-MM-DD) for consistency
+    // We use SV or CA because they are ISO-like
+    const datePart = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+    const timePart = d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false });
+    
+    return `${datePart}T${timePart}`;
+};
+
+export const thaiInputToISO = (inputValue: string) => {
+    if (!inputValue) return '';
+    // inputValue is YYYY-MM-DDTHH:mm representing local time (Bangkok)
+    // We create a date assuming that exact time, then adjust
+    const d = new Date(inputValue);
+    // Adjust logic: The input "2024-01-01T10:00" means 10:00 Bangkok time.
+    // If we just use new Date(), it uses browser local time.
+    // We need to construct ISO string that represents that specific absolute time.
+    
+    // Simple approach: Treat input as string, append offset +07:00
+    return `${inputValue}:00+07:00`;
+};

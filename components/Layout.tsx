@@ -73,14 +73,12 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
       });
   }, [isAdminOrArea, role, config]);
 
-  // Split Mobile Nav Items for Layout (2 Left, Center Button, 2 Right)
-  // Updated: Changed "Checkin" to "Menu" to restore functionality
+  // Updated Mobile Nav Items: Home, List, Passport, Menu
   const mobileNavItems: { id: string; label: string; icon: any; path?: string; action?: () => void }[] = [
       { id: 'home', label: 'หน้าแรก', icon: LayoutDashboard, path: '/home' },
-      { id: 'menu', label: 'เมนู', icon: Menu, action: () => setIsSidebarOpen(true) },
-      // CENTER SCAN BUTTON HERE
+      { id: 'checkin', label: 'รายการ', icon: MapPin, path: '/checkin-dashboard' },
       { id: 'passport', label: 'Passport', icon: ShieldCheck, path: '/passport' },
-      { id: 'profile', label: 'บัญชี', icon: UserCircle, path: '/profile' }
+      { id: 'menu', label: 'เมนู', icon: Menu, action: () => setIsSidebarOpen(true) }
   ];
 
   const handleNav = (path: string) => {
@@ -287,59 +285,23 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                 </div>
             </div>
 
-            {/* Mobile Bottom Navigation (Updated with Floating Button) */}
+            {/* Mobile Bottom Navigation (Updated to 4 specific items) */}
             <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-safe shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-                <div className="relative flex justify-between items-center h-16 px-1">
-                    
-                    {/* Floating Center Button */}
-                    <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 z-50">
-                        <button 
-                            onClick={() => setIsScannerOpen(true)}
-                            className="bg-blue-600 text-white p-4 rounded-full shadow-lg border-4 border-gray-50 hover:bg-blue-700 active:scale-95 transition-all flex flex-col items-center justify-center group"
+                <div className="grid grid-cols-4 h-16">
+                    {mobileNavItems.map((item) => (
+                        <button
+                            key={item.id}
+                            onClick={() => item.action ? item.action() : handleNav(item.path!)}
+                            className="flex flex-col items-center justify-center w-full h-full relative group pt-1 active:scale-95 transition-transform"
                         >
-                            <ScanLine className="w-7 h-7" />
+                            <div className={`p-1 rounded-xl transition-all ${item.path && currentPath === item.path ? 'text-blue-600 -translate-y-1' : 'text-gray-400'}`}>
+                                <item.icon className="w-6 h-6" />
+                            </div>
+                            <span className={`text-[10px] font-medium transition-colors ${item.path && currentPath === item.path ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
+                                {item.label}
+                            </span>
                         </button>
-                    </div>
-
-                    {/* Left Items */}
-                    <div className="flex flex-1 justify-around">
-                        {mobileNavItems.slice(0, 2).map((item) => (
-                            <button
-                                key={item.id}
-                                onClick={() => item.action ? item.action() : handleNav(item.path!)}
-                                className="flex flex-col items-center justify-center w-full h-full relative group pt-1"
-                            >
-                                <div className={`p-1 rounded-xl transition-all ${item.path && currentPath === item.path ? 'text-blue-600 -translate-y-1' : 'text-gray-400'}`}>
-                                    <item.icon className="w-6 h-6" />
-                                </div>
-                                <span className={`text-[10px] font-medium transition-colors ${item.path && currentPath === item.path ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
-                                    {item.label}
-                                </span>
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Spacer for Center Button */}
-                    <div className="w-16 shrink-0"></div>
-
-                    {/* Right Items */}
-                    <div className="flex flex-1 justify-around">
-                        {mobileNavItems.slice(2, 4).map((item) => (
-                            <button
-                                key={item.id}
-                                onClick={() => item.action ? item.action() : handleNav(item.path!)}
-                                className="flex flex-col items-center justify-center w-full h-full relative group pt-1"
-                            >
-                                <div className={`p-1 rounded-xl transition-all ${item.path && currentPath === item.path ? 'text-blue-600 -translate-y-1' : 'text-gray-400'}`}>
-                                    <item.icon className="w-6 h-6" />
-                                </div>
-                                <span className={`text-[10px] font-medium transition-colors ${item.path && currentPath === item.path ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
-                                    {item.label}
-                                </span>
-                            </button>
-                        ))}
-                    </div>
-
+                    ))}
                 </div>
             </div>
         </main>

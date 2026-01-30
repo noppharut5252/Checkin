@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AppData, CheckInUser } from '../types';
 import { MapPin, Navigation, Search, LocateFixed, Loader2, Clock, Users, QrCode, ScanLine, History, LayoutGrid, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import QRScannerModal from './QRScannerModal';
 import CheckInHistory from './CheckInHistory';
 
@@ -13,7 +13,19 @@ interface UserCheckInDashboardProps {
 
 const UserCheckInDashboard: React.FC<UserCheckInDashboardProps> = ({ data, user }) => {
     const navigate = useNavigate();
+    const location = useLocation();
+    
+    // Check navigation state for initial view mode
     const [viewMode, setViewMode] = useState<'activities' | 'history'>('activities');
+    
+    useEffect(() => {
+        if (location.state && (location.state as any).viewMode === 'history') {
+            setViewMode('history');
+            // Clear state to prevent stuck on refresh/back (optional, but good practice)
+            window.history.replaceState({}, document.title);
+        }
+    }, [location.state]);
+
     const [currentPos, setCurrentPos] = useState<{ lat: number, lng: number } | null>(null);
     const [loadingLocation, setLoadingLocation] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');

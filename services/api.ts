@@ -3,7 +3,6 @@ import { AppData, CheckInUser, CheckInLocation, CheckInActivity } from '../types
 
 const API_URL = "https://script.google.com/macros/s/AKfycbxyS_GG5snXmt2YTcMCMMYgfQZmzTynb-esxe8N2NBAdC1uGdIGGnPh7W0PuId4r4OF/exec";
 
-// --- Retry Logic Helper ---
 const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, backoff = 1000): Promise<any> => {
     try {
         const response = await fetch(url, options);
@@ -13,7 +12,7 @@ const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, ba
         if (retries > 0) {
             console.warn(`Request failed, retrying in ${backoff}ms... (${retries} retries left)`);
             await new Promise(resolve => setTimeout(resolve, backoff));
-            return fetchWithRetry(url, options, retries - 1, backoff * 2); // Exponential backoff
+            return fetchWithRetry(url, options, retries - 1, backoff * 2); 
         }
         throw error;
     }
@@ -21,10 +20,9 @@ const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, ba
 
 const apiRequest = async (action: string, payload: any = {}) => {
     try {
-        // Use fetchWithRetry instead of direct fetch
         const response = await fetchWithRetry(`${API_URL}`, {
             method: 'POST',
-            mode: 'cors', // Ensure CORS is handled
+            mode: 'cors',
             body: JSON.stringify({ action, ...payload })
         });
         return response;
@@ -105,8 +103,8 @@ export const saveLocation = async (location: Partial<CheckInLocation>) => {
         lng: location.Longitude,
         radius: location.RadiusMeters,
         desc: location.Description,
-        image: location.Image, // Keep for backward compat
-        images: location.Images, // New JSON array string
+        image: location.Image, 
+        images: location.Images, 
         floor: location.Floor,
         room: location.Room
     });
@@ -123,10 +121,11 @@ export const saveActivity = async (activity: Partial<CheckInActivity>) => {
         name: activity.Name,
         desc: activity.Description,
         status: activity.Status,
-        startDateTime: activity.StartDateTime, // Include Start Time
-        endDateTime: activity.EndDateTime,     // Include End Time
-        capacity: activity.Capacity,           // Include Capacity
-        image: activity.Image                  // Include Image
+        startDateTime: activity.StartDateTime,
+        endDateTime: activity.EndDateTime,
+        capacity: activity.Capacity,
+        image: activity.Image,
+        manualOverride: activity.ManualOverride // Pass override status
     });
 };
 

@@ -23,7 +23,7 @@ const LocationsTab: React.FC<LocationsTabProps> = ({ data, onDataUpdate }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const filteredLocations = useMemo(() => {
-        return data.checkInLocations.filter(loc => 
+        return (data.checkInLocations || []).filter(loc => 
             loc.Name.toLowerCase().includes(searchLocationQuery.toLowerCase())
         );
     }, [data.checkInLocations, searchLocationQuery]);
@@ -45,7 +45,7 @@ const LocationsTab: React.FC<LocationsTabProps> = ({ data, onDataUpdate }) => {
     };
 
     const handleDeleteClick = (loc: CheckInLocation) => {
-        const relatedActivities = data.checkInActivities.filter(a => a.LocationID === loc.LocationID);
+        const relatedActivities = (data.checkInActivities || []).filter(a => a.LocationID === loc.LocationID);
         if (relatedActivities.length > 0) {
             alert(`ไม่สามารถลบสถานที่ "${loc.Name}" ได้ เนื่องจากมีการใช้งานใน ${relatedActivities.length} กิจกรรม กรุณาลบหรือย้ายกิจกรรมออกก่อน`);
             return;

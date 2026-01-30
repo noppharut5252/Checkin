@@ -4,7 +4,7 @@ import { AppData, CheckInActivity, CheckInLocation, CheckInUser } from '../types
 import { 
     MapPin, Camera, Navigation, AlertOctagon, CheckCircle, Loader2, Send, 
     MessageSquare, AlertTriangle, ArrowLeft, RefreshCw, FileCheck, Signal, 
-    SignalHigh, SignalLow, X, Zap, Check 
+    SignalHigh, SignalLow, X, Zap, Check, Image
 } from 'lucide-react';
 import { performCheckIn, uploadCheckInImage, getUserCheckInHistory } from '../services/api';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -207,6 +207,8 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     const activity = useMemo(() => data.checkInActivities.find(a => a.ActivityID === activityId), [data, activityId]);
     const location = useMemo(() => activity ? data.checkInLocations.find(l => l.LocationID === activity.LocationID) : null, [data, activity]);
 
+    const isPhotoRequired = activity?.RequirePhoto === true;
+
     // 1. Init History Check
     useEffect(() => {
         let isMounted = true;
@@ -352,6 +354,17 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
             return;
         }
 
+        // Require Photo Validation
+        if (isPhotoRequired && !photo) {
+            setNotification({
+                isOpen: true,
+                type: 'error',
+                title: 'กรุณาถ่ายรูปยืนยัน',
+                message: 'กิจกรรมนี้กำหนดให้ต้องถ่ายภาพบรรยากาศหรือ Selfie เพื่อยืนยันการเข้าร่วม'
+            });
+            return;
+        }
+
         const uid = user.UserID || user.userid;
         setStatus('submitting');
         setNotification({
@@ -405,7 +418,11 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                     <div className="mt-6 p-4 bg-green-50 rounded-xl text-green-800 text-sm font-mono border border-green-200">
                         {new Date().toLocaleString('th-TH')}
                     </div>
-                    <button onClick={() => navigate(-1)} className="mt-8 w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-200 transition-transform active:scale-95">
+                    {/* Redirect to History Page */}
+                    <button 
+                        onClick={() => navigate('/checkin-dashboard', { state: { viewMode: 'history' } })} 
+                        className="mt-8 w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-200 transition-transform active:scale-95"
+                    >
                         เสร็จสิ้น
                     </button>
                 </div>
@@ -531,7 +548,10 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                     <div className="space-y-6">
                         {/* 1. Camera Input */}
                         <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">1. ถ่ายรูปยืนยัน (Selfie / Atmosphere)</label>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">
+                                1. ถ่ายรูปยืนยัน 
+                                {isPhotoRequired && <span className="text-red-500 ml-1">* (บังคับ)</span>}
+                            </label>
                             {photo ? (
                                 <div className="relative w-full h-48 rounded-2xl overflow-hidden shadow-md group cursor-pointer" onClick={() => setIsCameraOpen(true)}>
                                     <img src={photo} className="w-full h-full object-cover" />
@@ -545,13 +565,15 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                             ) : (
                                 <button 
                                     onClick={() => setIsCameraOpen(true)}
-                                    className="w-full h-48 bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center text-gray-400 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-500 transition-all group"
+                                    className={`w-full h-48 bg-gray-50 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center transition-all group ${isPhotoRequired ? 'border-red-300 hover:border-red-500 hover:bg-red-50' : 'border-gray-300 hover:border-blue-300 hover:bg-blue-50'}`}
                                 >
-                                    <div className="bg-white p-4 rounded-full shadow-sm mb-3 group-hover:scale-110 transition-transform">
-                                        <Camera className="w-8 h-8 text-blue-600" />
+                                    <div className={`bg-white p-4 rounded-full shadow-sm mb-3 group-hover:scale-110 transition-transform ${isPhotoRequired ? 'text-red-500' : 'text-blue-600'}`}>
+                                        <Camera className="w-8 h-8" />
                                     </div>
-                                    <span className="text-sm font-bold">แตะเพื่อถ่ายรูป</span>
-                                    <span className="text-xs mt-1 opacity-70">ต้องถ่ายใหม่ ณ จุดเช็คอิน</span>
+                                    <span className={`text-sm font-bold ${isPhotoRequired ? 'text-red-600' : 'text-gray-600'}`}>
+                                        {isPhotoRequired ? 'แตะเพื่อถ่ายรูป (บังคับ)' : 'แตะเพื่อถ่ายรูป'}
+                                    </span>
+                                    <span className="text-xs mt-1 opacity-70 text-gray-500">ต้องถ่ายใหม่ ณ จุดเช็คอิน</span>
                                 </button>
                             )}
                         </div>
@@ -574,8 +596,8 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                         {/* Submit */}
                         <button 
                             onClick={handleSubmit}
-                            disabled={status === 'submitting'}
-                            className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center text-lg disabled:opacity-70 disabled:scale-100"
+                            disabled={status === 'submitting' || (isPhotoRequired && !photo)}
+                            className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center text-lg disabled:opacity-70 disabled:scale-100 disabled:bg-gray-300 disabled:text-gray-500"
                         >
                             {status === 'submitting' ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Zap className="w-5 h-5 mr-2 fill-current" /> ยืนยันเช็คอิน</>}
                         </button>

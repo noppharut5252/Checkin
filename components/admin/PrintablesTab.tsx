@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { AppData, CheckInActivity } from '../../types';
-import { Printer, FileText, MapPin, QrCode, Download, Loader2, Search, CheckSquare, Square, Filter, Palette, LayoutGrid, Type, Scaling, ArrowUpFromLine, ArrowDownToLine, ArrowLeftFromLine, ArrowRightFromLine } from 'lucide-react';
+import { Printer, FileText, MapPin, QrCode, Download, Loader2, Search, CheckSquare, Square, Filter, Palette, LayoutGrid, Type, Scaling, ArrowUpFromLine, ArrowDownToLine, ArrowLeftFromLine, ArrowRightFromLine, Sliders } from 'lucide-react';
 import { generatePosterHTML } from '../../services/printUtils';
 
 // Declare html2pdf
@@ -10,6 +10,15 @@ declare var html2pdf: any;
 interface PrintablesTabProps {
     data: AppData;
 }
+
+const FONT_OPTIONS = [
+    { label: 'Kanit (มาตรฐาน)', value: 'Kanit' },
+    { label: 'Sarabun (ทางการ)', value: 'Sarabun' },
+    { label: 'Chakra Petch (ทันสมัย)', value: 'Chakra Petch' },
+    { label: 'Mali (ลายมือ)', value: 'Mali' },
+    { label: 'Thasadith (หัวข้อ)', value: 'Thasadith' },
+    { label: 'Bai Jamjuree (กึ่งทางการ)', value: 'Bai Jamjuree' },
+];
 
 const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
     // Search & Filter
@@ -21,15 +30,23 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
     
     // Config Panel
     const [config, setConfig] = useState({
-        layout: 'poster', // 'poster' (A4), 'half' (A5x2), 'card' (A6x4)
-        theme: 'blue', // 'blue', 'red', 'green', 'orange', 'black'
+        layout: 'poster', 
+        theme: 'blue', 
         note: '',
-        // Margins in mm
         margins: { top: 0, bottom: 0, left: 0, right: 0 },
-        // Font
-        fontFamily: 'Kanit',
-        // Font Sizes in pt
-        fontSizes: { header: 42, name: 32, note: 18 }
+        // Fine-grained Font Control
+        fonts: {
+            header: 'Kanit',
+            subheader: 'Kanit',
+            name: 'Kanit',
+            note: 'Kanit'
+        },
+        fontSizes: {
+            header: 42,
+            subheader: 18,
+            name: 32,
+            note: 18
+        }
     });
     
     const [isGenerating, setIsGenerating] = useState(false);
@@ -72,12 +89,42 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
         }));
     };
 
+    const updateFontFamily = (key: keyof typeof config.fonts, val: string) => {
+        setConfig(prev => ({
+            ...prev,
+            fonts: { ...prev.fonts, [key]: val }
+        }));
+    };
+
     const updateFontSize = (key: keyof typeof config.fontSizes, val: number) => {
         setConfig(prev => ({
             ...prev,
             fontSizes: { ...prev.fontSizes, [key]: val }
         }));
     };
+
+    // Helper Component for Font Section
+    const FontSection = ({ label, fieldKey }: { label: string, fieldKey: keyof typeof config.fonts }) => (
+        <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-gray-500">{label}</label>
+            <div className="flex gap-2">
+                <select 
+                    className="flex-1 border rounded px-1.5 py-1 text-xs outline-none bg-white"
+                    value={config.fonts[fieldKey]}
+                    onChange={(e) => updateFontFamily(fieldKey, e.target.value)}
+                >
+                    {FONT_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                </select>
+                <input 
+                    type="number" 
+                    className="w-12 border rounded px-1 py-1 text-xs text-center"
+                    value={config.fontSizes[fieldKey]} 
+                    onChange={(e) => updateFontSize(fieldKey, Number(e.target.value))} 
+                    title="Font Size (pt)"
+                />
+            </div>
+        </div>
+    );
 
     // Print & Download Logic
     const handleAction = async (mode: 'print' | 'pdf') => {
@@ -100,7 +147,7 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
                 if (noPrint) noPrint.remove();
                 
                 const opt = { 
-                    margin: 0, // We handle margins via CSS padding in generatePosterHTML
+                    margin: 0, 
                     filename: `qr_codes_${config.layout}_${Date.now()}.pdf`, 
                     image: { type: 'jpeg', quality: 0.98 }, 
                     html2canvas: { scale: 2, logging: false }, 
@@ -198,21 +245,14 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
                             </div>
                         </div>
 
-                        {/* Fonts */}
+                        {/* Typography (New & Detailed) */}
                         <div className="bg-white p-3 rounded-lg border border-indigo-100">
-                            <label className="text-xs font-bold text-gray-500 block mb-2 flex items-center"><Type className="w-3 h-3 mr-1"/> ตัวอักษร (Font)</label>
-                            <div className="space-y-2">
-                                <select className="w-full border rounded px-1 py-1 text-xs" value={config.fontFamily} onChange={(e) => setConfig({...config, fontFamily: e.target.value})}>
-                                    <option value="Kanit">Kanit (มาตรฐาน)</option>
-                                    <option value="Sarabun">Sarabun (ทางการ)</option>
-                                    <option value="Chakra Petch">Chakra Petch (เหลี่ยม)</option>
-                                    <option value="Mali">Mali (ลายมือ)</option>
-                                </select>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div><label className="text-[10px] text-gray-400 block">หัวเรื่อง (pt)</label><input type="number" className="w-full border rounded px-1 py-1 text-sm" value={config.fontSizes.header} onChange={(e) => updateFontSize('header', Number(e.target.value))} /></div>
-                                    <div><label className="text-[10px] text-gray-400 block">ชื่อ (pt)</label><input type="number" className="w-full border rounded px-1 py-1 text-sm" value={config.fontSizes.name} onChange={(e) => updateFontSize('name', Number(e.target.value))} /></div>
-                                    <div className="col-span-2"><label className="text-[10px] text-gray-400 block">รายละเอียด (pt)</label><input type="number" className="w-full border rounded px-1 py-1 text-sm" value={config.fontSizes.note} onChange={(e) => updateFontSize('note', Number(e.target.value))} /></div>
-                                </div>
+                            <label className="text-xs font-bold text-gray-500 block mb-2 flex items-center"><Type className="w-3 h-3 mr-1"/> รูปแบบตัวอักษร (Typography)</label>
+                            <div className="space-y-3">
+                                <FontSection label="หัวข้อ (Header)" fieldKey="header" />
+                                <FontSection label="คำอธิบาย (Subheader)" fieldKey="subheader" />
+                                <FontSection label="ชื่อกิจกรรม (Activity Name)" fieldKey="name" />
+                                <FontSection label="รายละเอียด/Note" fieldKey="note" />
                             </div>
                         </div>
                     </div>

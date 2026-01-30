@@ -31,6 +31,8 @@ export interface CheckInActivity {
   ReqTeachers?: number;
   ReqStudents?: number;
   RequirePhoto?: boolean; // New Field: Enforce photo upload
+  IsLocked?: boolean; // Cluster Level Lock
+  IsAreaLocked?: boolean; // Area Level Lock
 }
 
 export interface CheckInUser {

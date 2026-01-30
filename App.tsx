@@ -14,7 +14,7 @@ import ActivityDetailView from './components/ActivityDetailView';
 import { AppData, User } from './types';
 import { fetchData, checkUserRegistration } from './services/api';
 import { initLiff } from './services/liff';
-import { Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 import ActivityList from './components/ActivityList';
 import VenuesView from './components/VenuesView';
@@ -155,10 +155,19 @@ const App: React.FC = () => {
 
   if (loading) {
       return (
-          <div className="flex items-center justify-center h-screen bg-gray-50">
-              <div className="flex flex-col items-center">
-                <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-                <span className="text-gray-600 font-medium">กำลังโหลดข้อมูล...</span>
+          <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
+              <div className="flex flex-col items-center max-w-lg">
+                <img 
+                    src="https://raw.githubusercontent.com/noppharut5252/Checkin/refs/heads/main/logo/logo.gif" 
+                    alt="Loading..." 
+                    className="w-32 h-32 mb-6 object-contain"
+                />
+                <h3 className="text-gray-800 font-bold text-lg mb-2">กำลังโหลดข้อมูล...</h3>
+                <p className="text-gray-500 text-xs leading-relaxed">
+                    กิจกรรมการเรียนรู้ ภายใต้โครงการเสริมสร้างคุณธรรม จริยธรรมและธรรมาภิบาลในสถานศึกษา<br/>
+                    และสำนักงานเขตพื้นที่การศึกษา (โครงการโรงเรียนสุจริต)<br/>
+                    ประจำปีงบประมาณ พ.ศ. 2568 ระดับประเทศ
+                </p>
               </div>
           </div>
       );

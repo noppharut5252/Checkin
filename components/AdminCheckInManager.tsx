@@ -1,10 +1,12 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppData, CheckInUser } from '../types';
-import { LayoutGrid, Database, Loader2 } from 'lucide-react';
+import { LayoutGrid, Database, Loader2, Activity } from 'lucide-react';
 import LocationsTab from './admin/LocationsTab';
 import ActivitiesTab from './admin/ActivitiesTab';
 import LogsTab from './admin/LogsTab';
 import PrintablesTab from './admin/PrintablesTab';
+import LiveMonitorTab from './admin/LiveMonitorTab';
 import { useSearchParams } from 'react-router-dom';
 
 interface AdminProps {
@@ -15,7 +17,7 @@ interface AdminProps {
 
 const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate }) => {
     const [searchParams] = useSearchParams();
-    const [activeTab, setActiveTab] = useState<'locations' | 'activities' | 'printables' | 'logs'>('locations');
+    const [activeTab, setActiveTab] = useState<'locations' | 'activities' | 'printables' | 'logs' | 'live'>('locations');
     const [isGenerating, setIsGenerating] = useState(false);
     const [logSearchQuery, setLogSearchQuery] = useState('');
 
@@ -57,11 +59,12 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                         {isGenerating ? <Loader2 className="w-4 h-4 animate-spin mr-1"/> : <Database className="w-4 h-4 mr-1"/>}
                         สร้างข้อมูลตัวอย่าง
                     </button>
-                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                    <div className="flex flex-wrap bg-gray-100 p-1 rounded-lg">
                         <button onClick={() => setActiveTab('locations')} className={`px-4 py-2 rounded-md text-sm font-bold ${activeTab === 'locations' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>สถานที่</button>
                         <button onClick={() => setActiveTab('activities')} className={`px-4 py-2 rounded-md text-sm font-bold ${activeTab === 'activities' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>กิจกรรม</button>
                         <button onClick={() => setActiveTab('logs')} className={`px-4 py-2 rounded-md text-sm font-bold ${activeTab === 'logs' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>Logs</button>
                         <button onClick={() => setActiveTab('printables')} className={`px-4 py-2 rounded-md text-sm font-bold ${activeTab === 'printables' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>พิมพ์ป้าย</button>
+                        <button onClick={() => setActiveTab('live')} className={`px-4 py-2 rounded-md text-sm font-bold flex items-center ${activeTab === 'live' ? 'bg-red-500 text-white shadow' : 'text-gray-500'}`}><Activity className="w-3 h-3 mr-1"/> Live Monitor</button>
                     </div>
                 </div>
             </div>
@@ -70,6 +73,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
             {activeTab === 'activities' && <ActivitiesTab data={data} onDataUpdate={onDataUpdate} onViewLogs={handleViewLogs} />}
             {activeTab === 'logs' && <LogsTab initialSearchQuery={logSearchQuery} />}
             {activeTab === 'printables' && <PrintablesTab data={data} />}
+            {activeTab === 'live' && <LiveMonitorTab data={data} />}
         </div>
     );
 };

@@ -74,9 +74,10 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
   }, [isAdminOrArea, role, config]);
 
   // Split Mobile Nav Items for Layout (2 Left, Center Button, 2 Right)
+  // Updated: Changed "Checkin" to "Menu" to restore functionality
   const mobileNavItems: { id: string; label: string; icon: any; path?: string; action?: () => void }[] = [
       { id: 'home', label: 'หน้าแรก', icon: LayoutDashboard, path: '/home' },
-      { id: 'checkin', label: 'รายการ', icon: MapPin, path: '/checkin-dashboard' },
+      { id: 'menu', label: 'เมนู', icon: Menu, action: () => setIsSidebarOpen(true) },
       // CENTER SCAN BUTTON HERE
       { id: 'passport', label: 'Passport', icon: ShieldCheck, path: '/passport' },
       { id: 'profile', label: 'บัญชี', icon: UserCircle, path: '/profile' }
@@ -308,10 +309,10 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                                 onClick={() => item.action ? item.action() : handleNav(item.path!)}
                                 className="flex flex-col items-center justify-center w-full h-full relative group pt-1"
                             >
-                                <div className={`p-1 rounded-xl transition-all ${currentPath === item.path ? 'text-blue-600 -translate-y-1' : 'text-gray-400'}`}>
+                                <div className={`p-1 rounded-xl transition-all ${item.path && currentPath === item.path ? 'text-blue-600 -translate-y-1' : 'text-gray-400'}`}>
                                     <item.icon className="w-6 h-6" />
                                 </div>
-                                <span className={`text-[10px] font-medium transition-colors ${currentPath === item.path ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
+                                <span className={`text-[10px] font-medium transition-colors ${item.path && currentPath === item.path ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
                                     {item.label}
                                 </span>
                             </button>
@@ -329,10 +330,10 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
                                 onClick={() => item.action ? item.action() : handleNav(item.path!)}
                                 className="flex flex-col items-center justify-center w-full h-full relative group pt-1"
                             >
-                                <div className={`p-1 rounded-xl transition-all ${currentPath === item.path ? 'text-blue-600 -translate-y-1' : 'text-gray-400'}`}>
+                                <div className={`p-1 rounded-xl transition-all ${item.path && currentPath === item.path ? 'text-blue-600 -translate-y-1' : 'text-gray-400'}`}>
                                     <item.icon className="w-6 h-6" />
                                 </div>
-                                <span className={`text-[10px] font-medium transition-colors ${currentPath === item.path ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
+                                <span className={`text-[10px] font-medium transition-colors ${item.path && currentPath === item.path ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
                                     {item.label}
                                 </span>
                             </button>

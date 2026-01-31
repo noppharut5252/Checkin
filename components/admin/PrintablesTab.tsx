@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { AppData, CheckInActivity } from '../../types';
-import { Printer, FileText, MapPin, QrCode, Download, Loader2, Search, CheckSquare, Square, Filter, Palette, LayoutGrid, Type, Scaling, ArrowUpFromLine, ArrowDownToLine, ArrowLeftFromLine, ArrowRightFromLine, Sliders, Save, CheckCircle, AlertTriangle, X } from 'lucide-react';
+import { Printer, FileText, MapPin, QrCode, Download, Loader2, Search, CheckSquare, Square, Filter, Palette, LayoutGrid, Type, Scaling, ArrowUpFromLine, ArrowDownToLine, ArrowLeftFromLine, ArrowRightFromLine, Sliders, Save, CheckCircle, AlertTriangle, X, UserPlus, MousePointerClick } from 'lucide-react';
 import { generatePosterHTML } from '../../services/printUtils';
 import { getPrintConfig, savePrintConfig } from '../../services/api';
 
@@ -43,7 +43,19 @@ const NotificationModal: React.FC<{ isOpen: boolean, type: 'success' | 'error' |
     );
 };
 
+// Dummy activity for registration mode
+const DUMMY_REGISTRATION_ACTIVITY: CheckInActivity = {
+    ActivityID: 'REGISTRATION',
+    LocationID: '',
+    Name: 'Registration',
+    Description: 'Registration Point',
+    Status: 'Active'
+};
+
 const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
+    // Mode State
+    const [printMode, setPrintMode] = useState<'activity' | 'registration'>('activity');
+
     // Search & Filter
     const [searchQuery, setSearchQuery] = useState('');
     const [locationFilter, setLocationFilter] = useState('All');
@@ -229,10 +241,27 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
 
     // Print & Download Logic
     const handleAction = async (mode: 'print' | 'pdf') => {
-        const activities = getSelectedActivities();
-        if (activities.length === 0) return setNotification({
-            isOpen: true, type: 'warning', title: 'ยังไม่ได้เลือกรายการ', message: 'กรุณาเลือกกิจกรรมอย่างน้อย 1 รายการเพื่อพิมพ์'
-        });
+        // Determine items to print
+        let activitiesToPrint: CheckInActivity[] = [];
+        let qrType: 'checkin' | 'registration' = 'checkin';
+
+        if (printMode === 'registration') {
+            // In registration mode, we print just one "Registration" poster item
+            // But we can repeat it based on layout if needed, for simplicity let's do 1.
+            // If user selected 'card' layout, it will generate 1 page with 4 cards.
+            // Let's pass 4 items so it fills the page if layout is card, or 2 for half.
+            let count = 1;
+            if (config.layout === 'half') count = 2;
+            if (config.layout === 'card') count = 4;
+            
+            activitiesToPrint = Array(count).fill(DUMMY_REGISTRATION_ACTIVITY);
+            qrType = 'registration';
+        } else {
+            activitiesToPrint = getSelectedActivities();
+            if (activitiesToPrint.length === 0) return setNotification({
+                isOpen: true, type: 'warning', title: 'ยังไม่ได้เลือกรายการ', message: 'กรุณาเลือกกิจกรรมอย่างน้อย 1 รายการเพื่อพิมพ์'
+            });
+        }
         
         setIsGenerating(true);
 
@@ -255,22 +284,23 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
         }
 
         try {
-            const html = await generatePosterHTML(activities, data.checkInLocations, config);
+            const finalConfig = { ...config, qrType };
+            const html = await generatePosterHTML(activitiesToPrint, data.checkInLocations, finalConfig);
 
             if (mode === 'print' && printWin) {
                 printWin.document.open();
                 printWin.document.write(html);
                 printWin.document.close();
-                // Optional: Wait for images to load before print, but simple write usually works
             } else if (mode === 'pdf') {
                 const element = document.createElement('div');
                 element.innerHTML = html;
                 const noPrint = element.querySelector('.no-print');
                 if (noPrint) noPrint.remove();
                 
+                const filename = printMode === 'registration' ? `registration_qr_${Date.now()}.pdf` : `activity_qr_${Date.now()}.pdf`;
                 const opt = { 
                     margin: 0, 
-                    filename: `qr_codes_${config.layout}_${Date.now()}.pdf`, 
+                    filename: filename, 
                     image: { type: 'jpeg', quality: 0.98 }, 
                     html2canvas: { scale: 2, logging: false }, 
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } 
@@ -311,30 +341,49 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
             )}
 
             {/* 1. Header & Controls */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 justify-between">
-                <div className="flex-1 flex gap-2">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                        <input 
-                            type="text"
-                            placeholder="ค้นหากิจกรรม, สถานที่..."
-                            className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </div>
-                    <div className="w-48 relative hidden md:block">
-                        <Filter className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                        <select 
-                            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 outline-none bg-white cursor-pointer"
-                            value={locationFilter}
-                            onChange={(e) => setLocationFilter(e.target.value)}
-                        >
-                            <option value="All">ทุกสถานที่</option>
-                            {(data.checkInLocations || []).map(l => <option key={l.LocationID} value={l.LocationID}>{l.Name}</option>)}
-                        </select>
-                    </div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                
+                {/* Mode Switcher */}
+                <div className="flex bg-gray-100 p-1 rounded-lg shrink-0">
+                    <button 
+                        onClick={() => setPrintMode('activity')}
+                        className={`px-4 py-2 rounded-md text-sm font-bold flex items-center transition-all ${printMode === 'activity' ? 'bg-white text-blue-600 shadow' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        <MapPin className="w-4 h-4 mr-2" /> จุดเช็คอิน
+                    </button>
+                    <button 
+                        onClick={() => setPrintMode('registration')}
+                        className={`px-4 py-2 rounded-md text-sm font-bold flex items-center transition-all ${printMode === 'registration' ? 'bg-white text-purple-600 shadow' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        <UserPlus className="w-4 h-4 mr-2" /> ลงทะเบียน
+                    </button>
                 </div>
+
+                {printMode === 'activity' && (
+                    <div className="flex-1 flex gap-2 w-full md:w-auto">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                            <input 
+                                type="text"
+                                placeholder="ค้นหากิจกรรม, สถานที่..."
+                                className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+                        <div className="w-48 relative hidden lg:block">
+                            <Filter className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                            <select 
+                                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 outline-none bg-white cursor-pointer"
+                                value={locationFilter}
+                                onChange={(e) => setLocationFilter(e.target.value)}
+                            >
+                                <option value="All">ทุกสถานที่</option>
+                                {(data.checkInLocations || []).map(l => <option key={l.LocationID} value={l.LocationID}>{l.Name}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                )}
                 
                 <button 
                     onClick={() => setShowConfigPanel(!showConfigPanel)}
@@ -397,13 +446,13 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
                             </div>
                         </div>
 
-                        {/* Typography (New & Detailed) */}
+                        {/* Typography */}
                         <div className="bg-white p-3 rounded-lg border border-indigo-100">
-                            <label className="text-xs font-bold text-gray-500 block mb-2 flex items-center"><Type className="w-3 h-3 mr-1"/> รูปแบบตัวอักษร (Typography)</label>
+                            <label className="text-xs font-bold text-gray-500 block mb-2 flex items-center"><Type className="w-3 h-3 mr-1"/> รูปแบบตัวอักษร</label>
                             <div className="space-y-3">
                                 <FontSection label="หัวข้อ (Header)" fieldKey="header" />
                                 <FontSection label="คำอธิบาย (Subheader)" fieldKey="subheader" />
-                                <FontSection label="ชื่อกิจกรรม (Activity Name)" fieldKey="name" />
+                                <FontSection label="ชื่อหลัก (Main Name)" fieldKey="name" />
                                 <FontSection label="รายละเอียด/Note" fieldKey="note" />
                             </div>
                         </div>
@@ -411,58 +460,77 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
                 </div>
             )}
 
-            {/* 3. List & Selection */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-                <div className="p-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                    <div className="flex items-center gap-2 pl-2">
-                        <button onClick={handleSelectAll} className="text-gray-500 hover:text-blue-600">
-                            {selectedIds.size === filteredActivities.length && filteredActivities.length > 0 ? <CheckSquare className="w-5 h-5 text-blue-600"/> : <Square className="w-5 h-5"/>}
-                        </button>
-                        <span className="text-sm font-bold text-gray-700">เลือกทั้งหมด ({filteredActivities.length})</span>
+            {/* 3. Main Content: Activity List OR Registration Banner */}
+            {printMode === 'activity' ? (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+                    <div className="p-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2 pl-2">
+                            <button onClick={handleSelectAll} className="text-gray-500 hover:text-blue-600">
+                                {selectedIds.size === filteredActivities.length && filteredActivities.length > 0 ? <CheckSquare className="w-5 h-5 text-blue-600"/> : <Square className="w-5 h-5"/>}
+                            </button>
+                            <span className="text-sm font-bold text-gray-700">เลือกทั้งหมด ({filteredActivities.length})</span>
+                        </div>
+                        {selectedIds.size > 0 && (
+                            <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                                เลือกแล้ว {selectedIds.size} รายการ
+                            </span>
+                        )}
                     </div>
-                    {selectedIds.size > 0 && (
-                        <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                            เลือกแล้ว {selectedIds.size} รายการ
-                        </span>
-                    )}
-                </div>
-                
-                <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
-                    {filteredActivities.map(act => (
-                        <div 
-                            key={act.ActivityID} 
-                            onClick={() => handleToggleSelect(act.ActivityID)}
-                            className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 transition-colors ${selectedIds.has(act.ActivityID) ? 'bg-blue-50/50' : ''}`}
-                        >
-                            <div className={selectedIds.has(act.ActivityID) ? 'text-blue-600' : 'text-gray-300'}>
-                                {selectedIds.has(act.ActivityID) ? <CheckSquare className="w-5 h-5"/> : <Square className="w-5 h-5"/>}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-sm font-bold text-gray-800 truncate">{act.Name}</div>
-                                <div className="text-xs text-gray-500 flex items-center mt-0.5">
-                                    <MapPin className="w-3 h-3 mr-1" />
-                                    {(data.checkInLocations || []).find(l => l.LocationID === act.LocationID)?.Name || '-'}
+                    
+                    <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
+                        {filteredActivities.map(act => (
+                            <div 
+                                key={act.ActivityID} 
+                                onClick={() => handleToggleSelect(act.ActivityID)}
+                                className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 transition-colors ${selectedIds.has(act.ActivityID) ? 'bg-blue-50/50' : ''}`}
+                            >
+                                <div className={selectedIds.has(act.ActivityID) ? 'text-blue-600' : 'text-gray-300'}>
+                                    {selectedIds.has(act.ActivityID) ? <CheckSquare className="w-5 h-5"/> : <Square className="w-5 h-5"/>}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-bold text-gray-800 truncate">{act.Name}</div>
+                                    <div className="text-xs text-gray-500 flex items-center mt-0.5">
+                                        <MapPin className="w-3 h-3 mr-1" />
+                                        {(data.checkInLocations || []).find(l => l.LocationID === act.LocationID)?.Name || '-'}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                                        {act.ActivityID}
+                                    </span>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-1 rounded">
-                                    {act.ActivityID}
-                                </span>
-                            </div>
-                        </div>
-                    ))}
-                    {filteredActivities.length === 0 && (
-                        <div className="p-8 text-center text-gray-400">ไม่พบกิจกรรม</div>
-                    )}
+                        ))}
+                        {filteredActivities.length === 0 && (
+                            <div className="p-8 text-center text-gray-400">ไม่พบกิจกรรม</div>
+                        )}
+                    </div>
                 </div>
-            </div>
+            ) : (
+                <div className="bg-purple-50 rounded-2xl border-2 border-dashed border-purple-200 p-10 flex flex-col items-center justify-center text-center animate-in zoom-in-95">
+                    <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm">
+                        <QrCode className="w-10 h-10 text-purple-600" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-purple-900 mb-2">ป้ายลงทะเบียนเข้าใช้งาน</h3>
+                    <p className="text-purple-700 max-w-md">
+                        QR Code นี้จะเชื่อมโยงไปยังหน้า LINE LIFF โดยตรง เพื่อให้ผู้ใช้งานทำการลงทะเบียนสมาชิกใหม่ หรือเข้าสู่ระบบโดยอัตโนมัติ
+                    </p>
+                    <div className="mt-6 flex gap-2">
+                        <span className="px-3 py-1 bg-white rounded-lg text-xs font-bold text-purple-600 border border-purple-100 shadow-sm flex items-center">
+                            <MousePointerClick className="w-3 h-3 mr-1"/> Link to LIFF
+                        </span>
+                    </div>
+                </div>
+            )}
 
             {/* 4. Bottom Action Bar */}
-            {selectedIds.size > 0 && (
+            {(selectedIds.size > 0 || printMode === 'registration') && (
                 <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 bg-white border border-gray-200 shadow-xl rounded-full px-6 py-3 flex items-center gap-4 animate-in slide-in-from-bottom-5 w-max max-w-[90vw]">
                     <div className="flex flex-col items-start mr-2">
                         <span className="text-xs text-gray-500 font-bold uppercase">Ready to Print</span>
-                        <span className="text-sm font-black text-gray-800">{selectedIds.size} รายการ ({config.layout})</span>
+                        <span className="text-sm font-black text-gray-800">
+                            {printMode === 'activity' ? `${selectedIds.size} รายการ` : 'Registration Poster'} ({config.layout})
+                        </span>
                     </div>
                     
                     <div className="h-8 w-px bg-gray-200 mx-1"></div>

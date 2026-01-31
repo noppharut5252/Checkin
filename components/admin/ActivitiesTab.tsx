@@ -137,12 +137,19 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         const overrideStatus = bulkStatusModal.status;
         setIsProcessingBulk(true);
         try {
-            const promises = Array.from(selectedIds).map(id => {
-                const act = data.checkInActivities.find(a => a.ActivityID === id);
-                if (act) return saveActivity({ ...act, ManualOverride: overrideStatus });
-                return Promise.resolve();
-            });
-            await Promise.all(promises);
+            // Batch processing to prevent network flood
+            const ids = Array.from(selectedIds);
+            const BATCH_SIZE = 5;
+            for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+                const batch = ids.slice(i, i + BATCH_SIZE);
+                await Promise.all(batch.map(id => {
+                    const act = data.checkInActivities.find(a => a.ActivityID === id);
+                    if (act) return saveActivity({ ...act, ManualOverride: overrideStatus });
+                    return Promise.resolve();
+                }));
+                // Small delay between batches
+                await new Promise(r => setTimeout(r, 200));
+            }
             setAlertMessage({ type: 'success', text: 'อัปเดตสถานะกลุ่มสำเร็จ' });
             onDataUpdate();
             setSelectedIds(new Set());
@@ -162,8 +169,13 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     const confirmBulkDelete = async () => {
         setIsProcessingBulk(true);
         try {
-            const promises = Array.from(selectedIds).map(id => deleteActivity(id));
-            await Promise.all(promises);
+            const ids = Array.from(selectedIds);
+            const BATCH_SIZE = 5;
+            for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+                const batch = ids.slice(i, i + BATCH_SIZE);
+                await Promise.all(batch.map(id => deleteActivity(id)));
+                await new Promise(r => setTimeout(r, 300)); // Delay for delete consistency
+            }
             setAlertMessage({ type: 'success', text: 'ลบข้อมูลกลุ่มสำเร็จ' });
             onDataUpdate();
             setSelectedIds(new Set());
@@ -182,14 +194,14 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         const csvContent = [
             headers.join(','),
             ...filteredActivities.map(act => [
-                `"${act.Name.replace(/"/g, '""')}"`,
+                `"${(act.Name || '').replace(/"/g, '""')}"`,
                 act.LocationID,
                 `"${(act.Description || '').replace(/"/g, '""')}"`,
                 act.StartDateTime || '',
                 act.EndDateTime || '',
                 act.Capacity || 0,
                 act.Category || '',
-                `"${act.Levels || ''}"`,
+                `"${(act.Levels || '').replace(/"/g, '""')}"`,
                 act.Mode || '',
                 act.ReqStudents || 0,
                 act.ReqTeachers || 0,
@@ -228,46 +240,90 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        
         setIsImporting(true);
-        setAlertMessage({ type: 'loading', text: 'กำลังนำเข้าข้อมูล...' });
+        setAlertMessage({ type: 'loading', text: 'กำลังเตรียมนำเข้าข้อมูล...' });
 
         const reader = new FileReader();
         reader.onload = async (evt) => {
             try {
-                const text = evt.target?.result as string;
-                const lines = text.split(/\r\n|\n/).filter(l => l.trim());
-                const promises = [];
-                let successCount = 0;
+                let text = evt.target?.result as string;
+                // Remove BOM if present
+                if (text.charCodeAt(0) === 0xFEFF) {
+                    text = text.substr(1);
+                }
 
-                // Simple helper to parse CSV line respecting quotes
-                const parseLine = (line: string) => {
-                    const result = [];
-                    let start = 0;
-                    let inQuotes = false;
-                    for (let i = 0; i < line.length; i++) {
-                        if (line[i] === '"') inQuotes = !inQuotes;
-                        else if (line[i] === ',' && !inQuotes) {
-                            result.push(line.substring(start, i).replace(/^"|"$/g, '').replace(/""/g, '"').trim());
-                            start = i + 1;
+                // Robust CSV Parser State Machine
+                // Correctly handles commas inside quotes and multi-line fields
+                const rows: string[][] = [];
+                let currentRow: string[] = [];
+                let currentField = '';
+                let inQuotes = false;
+
+                for (let i = 0; i < text.length; i++) {
+                    const char = text[i];
+                    const nextChar = text[i + 1];
+
+                    if (inQuotes) {
+                        if (char === '"') {
+                            if (nextChar === '"') {
+                                // Escaped quote ("") -> becomes (")
+                                currentField += '"';
+                                i++; // Skip next quote
+                            } else {
+                                // Closing quote
+                                inQuotes = false;
+                            }
+                        } else {
+                            currentField += char;
+                        }
+                    } else {
+                        if (char === '"') {
+                            inQuotes = true;
+                        } else if (char === ',') {
+                            // End of field
+                            currentRow.push(currentField.trim());
+                            currentField = '';
+                        } else if (char === '\r' || char === '\n') {
+                            // End of row
+                            if (char === '\r' && nextChar === '\n') i++; // Handle CRLF
+                            
+                            currentRow.push(currentField.trim());
+                            rows.push(currentRow);
+                            currentRow = [];
+                            currentField = '';
+                        } else {
+                            currentField += char;
                         }
                     }
-                    result.push(line.substring(start).replace(/^"|"$/g, '').replace(/""/g, '"').trim());
-                    return result;
-                };
+                }
+                
+                // Push last row if exists
+                if (currentField || currentRow.length > 0) {
+                    currentRow.push(currentField.trim());
+                    rows.push(currentRow);
+                }
+
+                // Filter out empty rows
+                const validRows = rows.filter(r => r.length > 0 && r.some(c => c !== ''));
+
+                const actsToSave: Partial<CheckInActivity>[] = [];
 
                 // Skip header (i=1)
-                for (let i = 1; i < lines.length; i++) {
-                    const cols = parseLine(lines[i]);
+                for (let i = 1; i < validRows.length; i++) {
+                    const cols = validRows[i];
                     
-                    // Basic validation: Name required
+                    // Basic validation: Name required (Index 0)
                     if (cols.length >= 1 && cols[0]) {
-                        
-                        // Parse Date Strings (YYYY-MM-DD HH:mm expected in CSV)
+                        // Safe date parser
                         const parseDate = (d: string) => {
                             if (!d) return '';
-                            // Try basic ISO parsing
                             const parsed = new Date(d);
-                            if (!isNaN(parsed.getTime())) return parsed.toISOString();
+                            // Check if valid date
+                            if (!isNaN(parsed.getTime())) {
+                                // GAS expects ISO string usually, but frontend saves as ISO
+                                return parsed.toISOString();
+                            }
                             return '';
                         };
 
@@ -288,17 +344,40 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                             Status: 'Active',
                             ManualOverride: ''
                         };
-                        promises.push(saveActivity(newAct));
+                        actsToSave.push(newAct);
                     }
                 }
 
-                if (promises.length > 0) {
-                    await Promise.all(promises);
-                    successCount = promises.length;
-                    setAlertMessage({ type: 'success', text: `นำเข้าสำเร็จ ${successCount} รายการ` });
+                if (actsToSave.length > 0) {
+                    // --- BATCH PROCESSING TO PREVENT CORS/RATE LIMIT ERROR ---
+                    const BATCH_SIZE = 3; // Conservative batch size for GAS
+                    let successCount = 0;
+                    
+                    for (let i = 0; i < actsToSave.length; i += BATCH_SIZE) {
+                        const batch = actsToSave.slice(i, i + BATCH_SIZE);
+                        const progress = Math.round(((i + batch.length) / actsToSave.length) * 100);
+                        
+                        setAlertMessage({ type: 'loading', text: `กำลังบันทึก ${progress}% (${i + batch.length}/${actsToSave.length})` });
+                        
+                        try {
+                            await Promise.all(batch.map(act => saveActivity(act)));
+                            successCount += batch.length;
+                        } catch (err) {
+                            console.error("Batch save error:", err);
+                            // Continue to next batch even if this one failed partially?
+                            // For import, maybe better to try continuing.
+                        }
+                        
+                        // Delay between batches to be nice to the server
+                        if (i + BATCH_SIZE < actsToSave.length) {
+                            await new Promise(r => setTimeout(r, 500));
+                        }
+                    }
+
+                    setAlertMessage({ type: 'success', text: `นำเข้าสำเร็จ ${successCount} จาก ${actsToSave.length} รายการ` });
                     onDataUpdate();
                 } else {
-                    setAlertMessage({ type: 'error', text: 'ไม่พบข้อมูลที่ถูกต้องในไฟล์' });
+                    setAlertMessage({ type: 'error', text: 'ไม่พบข้อมูลที่ถูกต้องในไฟล์ หรือรูปแบบไม่ถูกต้อง' });
                 }
 
             } catch (err) {
@@ -642,6 +721,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                 onSuccess={onDataUpdate}
             />
 
+            {/* Individual Delete Modal */}
             <ConfirmationModal
                 isOpen={deleteModal.isOpen}
                 title={deleteModal.title}
@@ -654,11 +734,25 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                 actionType="delete"
             />
 
-            {/* Bulk Status Change Modal */}
+            {/* Single Status Change Modal */}
+            <ConfirmationModal
+                isOpen={statusModal.isOpen}
+                title="ยืนยันการเปลี่ยนสถานะ"
+                description="" 
+                confirmLabel="ยืนยันการเปลี่ยนสถานะ"
+                confirmColor={statusModal.nextStatus === 'OPEN' ? 'green' : statusModal.nextStatus === 'CLOSED' ? 'red' : 'blue'}
+                onConfirm={handleConfirmStatus}
+                onCancel={() => setStatusModal({ ...statusModal, isOpen: false })}
+                actionType="updateStatus"
+            >
+                {getStatusModalContent(statusModal.nextStatus)}
+            </ConfirmationModal>
+
+            {/* Bulk Status Modal */}
             <ConfirmationModal
                 isOpen={bulkStatusModal.isOpen}
                 title={`เปลี่ยนสถานะ ${selectedIds.size} รายการ`}
-                description="" // Handled by children
+                description=""
                 confirmLabel="ยืนยันการเปลี่ยนสถานะกลุ่ม"
                 confirmColor={bulkStatusModal.status === 'OPEN' ? 'green' : bulkStatusModal.status === 'CLOSED' ? 'red' : 'blue'}
                 onConfirm={confirmBulkStatusChange}
@@ -680,20 +774,6 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                 isLoading={isProcessingBulk}
                 actionType="delete"
             />
-
-            {/* Single Status Change Modal */}
-            <ConfirmationModal
-                isOpen={statusModal.isOpen}
-                title="ยืนยันการเปลี่ยนสถานะ"
-                description="" 
-                confirmLabel="ยืนยันการเปลี่ยนสถานะ"
-                confirmColor={statusModal.nextStatus === 'OPEN' ? 'green' : statusModal.nextStatus === 'CLOSED' ? 'red' : 'blue'}
-                onConfirm={handleConfirmStatus}
-                onCancel={() => setStatusModal({ ...statusModal, isOpen: false })}
-                actionType="updateStatus"
-            >
-                {getStatusModalContent(statusModal.nextStatus)}
-            </ConfirmationModal>
         </div>
     );
 };

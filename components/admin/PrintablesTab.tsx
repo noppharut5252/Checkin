@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { AppData, CheckInActivity } from '../../types';
-import { Printer, FileText, MapPin, QrCode, Download, Loader2, Search, CheckSquare, Square, Filter, Palette, LayoutGrid, Type, Scaling, ArrowUpFromLine, ArrowDownToLine, ArrowLeftFromLine, ArrowRightFromLine, Sliders, Save } from 'lucide-react';
+import { Printer, FileText, MapPin, QrCode, Download, Loader2, Search, CheckSquare, Square, Filter, Palette, LayoutGrid, Type, Scaling, ArrowUpFromLine, ArrowDownToLine, ArrowLeftFromLine, ArrowRightFromLine, Sliders, Save, CheckCircle, AlertTriangle, X } from 'lucide-react';
 import { generatePosterHTML } from '../../services/printUtils';
 import { getPrintConfig, savePrintConfig } from '../../services/api';
 
@@ -21,6 +21,28 @@ const FONT_OPTIONS = [
     { label: 'Bai Jamjuree (กึ่งทางการ)', value: 'Bai Jamjuree' },
 ];
 
+const NotificationModal: React.FC<{ isOpen: boolean, type: 'success' | 'error' | 'warning', title: string, message: string, onClose: () => void }> = ({ isOpen, type, title, message, onClose }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[400] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300">
+            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${type === 'success' ? 'bg-green-100 text-green-600' : type === 'warning' ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
+                    {type === 'success' && <CheckCircle className="w-8 h-8" />}
+                    {(type === 'error' || type === 'warning') && <AlertTriangle className="w-8 h-8" />}
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">{title}</h3>
+                <p className="text-gray-500 text-sm mb-6">{message}</p>
+                <button 
+                    onClick={onClose}
+                    className={`w-full py-3 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 ${type === 'success' ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : type === 'warning' ? 'bg-orange-500 hover:bg-orange-600 shadow-orange-200' : 'bg-red-600 hover:bg-red-700 shadow-red-200'}`}
+                >
+                    {type === 'success' ? 'ตกลง' : 'ปิด'}
+                </button>
+            </div>
+        </div>
+    );
+};
+
 const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
     // Search & Filter
     const [searchQuery, setSearchQuery] = useState('');
@@ -35,7 +57,6 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
         theme: 'blue', 
         note: '',
         margins: { top: 0, bottom: 0, left: 0, right: 0 },
-        // Fine-grained Font Control
         fonts: {
             header: 'Kanit',
             subheader: 'Kanit',
@@ -53,6 +74,11 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isSavingConfig, setIsSavingConfig] = useState(false);
     const [showConfigPanel, setShowConfigPanel] = useState(false);
+    
+    // Notification State
+    const [notification, setNotification] = useState<{isOpen: boolean, type: 'success'|'error'|'warning', title: string, message: string}>({
+        isOpen: false, type: 'success', title: '', message: ''
+    });
 
     // Load Config on Mount
     useEffect(() => {
@@ -60,11 +86,9 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
             try {
                 const savedConfigs = await getPrintConfig();
                 if (savedConfigs && savedConfigs.posterConfig) {
-                    // Merge saved config with defaults to ensure all fields exist
                     setConfig(prev => ({
                         ...prev,
                         ...savedConfigs.posterConfig,
-                        // Ensure nested objects are merged correctly if partial
                         margins: { ...prev.margins, ...(savedConfigs.posterConfig.margins || {}) },
                         fonts: { ...prev.fonts, ...(savedConfigs.posterConfig.fonts || {}) },
                         fontSizes: { ...prev.fontSizes, ...(savedConfigs.posterConfig.fontSizes || {}) }
@@ -132,10 +156,20 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
         setIsSavingConfig(true);
         try {
             await savePrintConfig(config);
-            alert('บันทึกการตั้งค่าเรียบร้อยแล้ว');
+            setNotification({
+                isOpen: true,
+                type: 'success',
+                title: 'บันทึกสำเร็จ',
+                message: 'บันทึกการตั้งค่ารูปแบบป้ายเรียบร้อยแล้ว'
+            });
         } catch (e) {
             console.error(e);
-            alert('เกิดข้อผิดพลาดในการบันทึก');
+            setNotification({
+                isOpen: true,
+                type: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                message: 'ไม่สามารถบันทึกการตั้งค่าได้ กรุณาลองใหม่อีกครั้ง'
+            });
         } finally {
             setIsSavingConfig(false);
         }
@@ -167,7 +201,9 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
     // Print & Download Logic
     const handleAction = async (mode: 'print' | 'pdf') => {
         const activities = getSelectedActivities();
-        if (activities.length === 0) return alert('กรุณาเลือกอย่างน้อย 1 กิจกรรม');
+        if (activities.length === 0) return setNotification({
+            isOpen: true, type: 'warning', title: 'ยังไม่ได้เลือกรายการ', message: 'กรุณาเลือกกิจกรรมอย่างน้อย 1 รายการเพื่อพิมพ์'
+        });
         
         setIsGenerating(true);
         try {
@@ -175,7 +211,15 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
 
             if (mode === 'print') {
                 const win = window.open('', '_blank');
-                if (!win) { alert('Pop-up Blocked'); return; }
+                if (!win) { 
+                    setNotification({
+                        isOpen: true,
+                        type: 'warning',
+                        title: 'หน้าต่างถูกบล็อก (Pop-up Blocked)',
+                        message: 'กรุณาอนุญาตให้เว็บไซต์เปิดหน้าต่างใหม่ (Pop-up) เพื่อพิมพ์เอกสาร'
+                    });
+                    return; 
+                }
                 win.document.write(html);
                 win.document.close();
             } else {
@@ -195,15 +239,25 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
             }
         } catch (e) {
             console.error(e);
-            alert('เกิดข้อผิดพลาด');
+            setNotification({
+                isOpen: true, type: 'error', title: 'เกิดข้อผิดพลาด', message: 'ไม่สามารถสร้างเอกสารได้ในขณะนี้'
+            });
         } finally {
             setIsGenerating(false);
         }
     };
 
     return (
-        <div className="space-y-4 pb-20">
+        <div className="space-y-4 pb-20 relative">
             
+            <NotificationModal 
+                isOpen={notification.isOpen} 
+                type={notification.type} 
+                title={notification.title} 
+                message={notification.message} 
+                onClose={() => setNotification(prev => ({...prev, isOpen: false}))} 
+            />
+
             {/* 1. Header & Controls */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 justify-between">
                 <div className="flex-1 flex gap-2">

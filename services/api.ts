@@ -1,5 +1,5 @@
 
-import { AppData, User, CheckInLocation, CheckInActivity, PassportConfig, Announcement, Venue, CertificateTemplate } from '../types';
+import { AppData, User, CheckInLocation, CheckInActivity, PassportConfig, Announcement, Venue, CertificateTemplate, School, Team } from '../types';
 
 // Replace with your actual Google Apps Script Web App URL
 const API_URL = "https://script.google.com/macros/s/AKfycbxyS_GG5snXmt2YTcMCMMYgfQZmzTynb-esxe8N2NBAdC1uGdIGGnPh7W0PuId4r4OF/exec";
@@ -189,4 +189,71 @@ export const savePrintConfig = async (config: any) => {
 
 export const savePassportConfig = async (config: PassportConfig) => {
     return await apiRequest('savePassportConfig', { data: config });
+};
+
+// --- Missing Functions Added Below ---
+
+// School functions
+export const saveSchool = async (school: Partial<School>) => {
+    return await apiRequest('saveSchool', school);
+};
+
+export const deleteSchool = async (id: string) => {
+    const res = await apiRequest('deleteSchool', { id });
+    return res.status === 'success';
+};
+
+// Team & Scoring functions
+export const updateTeamStatus = async (teamId: string, status: string, reason: string = '') => {
+    return await apiRequest('updateTeamStatus', { teamId, status, reason });
+};
+
+export const deleteTeam = async (teamId: string) => {
+    const res = await apiRequest('deleteTeam', { teamId });
+    return res.status === 'success';
+};
+
+export const updateTeamDetails = async (team: Partial<Team>) => {
+    return await apiRequest('updateTeamDetails', team);
+};
+
+export const updateTeamResult = async (params: any) => {
+    return await apiRequest('updateTeamResult', params);
+};
+
+export const updateAreaResult = async (params: any) => {
+    return await apiRequest('updateAreaResult', params);
+};
+
+export const saveScoreSheet = async (data: any[]) => {
+    return await apiRequest('saveScoreSheet', { data });
+};
+
+export const toggleActivityLock = async (activityId: string, isLocked: boolean, scope: 'cluster' | 'area') => {
+    return await apiRequest('toggleActivityLock', { activityId, isLocked, scope });
+};
+
+// Judge functions
+export const saveJudge = async (judge: any) => {
+    return await apiRequest('saveJudge', judge);
+};
+
+export const deleteJudge = async (id: string) => {
+    const res = await apiRequest('deleteJudge', { id });
+    return res.status === 'success';
+};
+
+export const getJudgeConfig = async () => {
+    const res = await apiRequest('getJudgeConfig');
+    return res.status === 'success' ? res.configs : {};
+};
+
+export const saveJudgeConfig = async (id: string, config: any) => {
+    const res = await apiRequest('saveJudgeConfig', { id, config });
+    return res.status === 'success';
+};
+
+// System
+export const createSampleData = async () => {
+    return await apiRequest('createSampleData');
 };

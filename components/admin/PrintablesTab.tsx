@@ -198,6 +198,35 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
         </div>
     );
 
+    // --- Loading HTML for Popup ---
+    const getLoadingHTML = () => `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Generating Document...</title>
+            <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;600&display=swap" rel="stylesheet">
+            <style>
+                body { 
+                    display: flex; flex-direction: column; align-items: center; justify-content: center; 
+                    height: 100vh; margin: 0; background-color: #f8fafc; font-family: 'Kanit', sans-serif; 
+                }
+                .loader {
+                    border: 4px solid #e2e8f0; border-top: 4px solid #3b82f6; border-radius: 50%;
+                    width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px;
+                }
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                h2 { color: #1e293b; margin: 0; }
+                p { color: #64748b; margin-top: 8px; font-size: 14px; }
+            </style>
+        </head>
+        <body>
+            <div class="loader"></div>
+            <h2>กำลังจัดเตรียมเอกสาร</h2>
+            <p>กรุณารอสักครู่ ระบบกำลังสร้าง QR Code และจัดหน้า...</p>
+        </body>
+        </html>
+    `;
+
     // Print & Download Logic
     const handleAction = async (mode: 'print' | 'pdf') => {
         const activities = getSelectedActivities();
@@ -206,23 +235,34 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
         });
         
         setIsGenerating(true);
+
+        // For PRINT: Open window immediately to prevent blocker
+        let printWin: Window | null = null;
+        if (mode === 'print') {
+            printWin = window.open('', '_blank');
+            if (printWin) {
+                printWin.document.write(getLoadingHTML());
+            } else {
+                setIsGenerating(false);
+                setNotification({
+                    isOpen: true,
+                    type: 'warning',
+                    title: 'หน้าต่างถูกบล็อก',
+                    message: 'กรุณาอนุญาตให้เว็บไซต์เปิดหน้าต่างใหม่ (Pop-up) เพื่อพิมพ์เอกสาร'
+                });
+                return;
+            }
+        }
+
         try {
             const html = await generatePosterHTML(activities, data.checkInLocations, config);
 
-            if (mode === 'print') {
-                const win = window.open('', '_blank');
-                if (!win) { 
-                    setNotification({
-                        isOpen: true,
-                        type: 'warning',
-                        title: 'หน้าต่างถูกบล็อก (Pop-up Blocked)',
-                        message: 'กรุณาอนุญาตให้เว็บไซต์เปิดหน้าต่างใหม่ (Pop-up) เพื่อพิมพ์เอกสาร'
-                    });
-                    return; 
-                }
-                win.document.write(html);
-                win.document.close();
-            } else {
+            if (mode === 'print' && printWin) {
+                printWin.document.open();
+                printWin.document.write(html);
+                printWin.document.close();
+                // Optional: Wait for images to load before print, but simple write usually works
+            } else if (mode === 'pdf') {
                 const element = document.createElement('div');
                 element.innerHTML = html;
                 const noPrint = element.querySelector('.no-print');
@@ -239,6 +279,7 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
             }
         } catch (e) {
             console.error(e);
+            if (printWin) printWin.close();
             setNotification({
                 isOpen: true, type: 'error', title: 'เกิดข้อผิดพลาด', message: 'ไม่สามารถสร้างเอกสารได้ในขณะนี้'
             });
@@ -257,6 +298,17 @@ const PrintablesTab: React.FC<PrintablesTabProps> = ({ data }) => {
                 message={notification.message} 
                 onClose={() => setNotification(prev => ({...prev, isOpen: false}))} 
             />
+
+            {/* Global Loader Overlay (for PDF generation which doesn't open new window immediately) */}
+            {isGenerating && (
+                <div className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center">
+                        <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+                        <h3 className="text-lg font-bold text-gray-800">กำลังประมวลผล...</h3>
+                        <p className="text-gray-500 text-sm mt-1">กรุณารอสักครู่</p>
+                    </div>
+                </div>
+            )}
 
             {/* 1. Header & Controls */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 justify-between">

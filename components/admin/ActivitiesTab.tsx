@@ -50,7 +50,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     const [bulkStatusModal, setBulkStatusModal] = useState<{ isOpen: boolean; status: 'OPEN' | 'CLOSED' | '' }>({ isOpen: false, status: '' });
     const [bulkDeleteModal, setBulkDeleteModal] = useState(false);
 
-    const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'loading', text: string } | null>(null);
     
     const [isDeleting, setIsDeleting] = useState(false);
     
@@ -63,9 +63,9 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         setSelectedIds(new Set());
     }, [searchActivityQuery, activityStatusFilter, categoryFilter, levelFilter]);
 
-    // Auto-dismiss alert
+    // Auto-dismiss alert (only for success/error, not loading)
     useEffect(() => {
-        if (alertMessage) {
+        if (alertMessage && alertMessage.type !== 'loading') {
             const timer = setTimeout(() => setAlertMessage(null), 3000);
             return () => clearTimeout(timer);
         }
@@ -130,7 +130,6 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
 
     const handleBulkStatusChange = (overrideStatus: 'OPEN' | 'CLOSED' | '') => {
         if (selectedIds.size === 0) return;
-        // Just open the modal, the logic is in confirmBulkStatusChange
         setBulkStatusModal({ isOpen: true, status: overrideStatus });
     };
 
@@ -157,7 +156,6 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
 
     const handleBulkDelete = () => {
         if (selectedIds.size === 0) return;
-        // Just open the modal
         setBulkDeleteModal(true);
     };
 
@@ -211,9 +209,11 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     };
 
     const handleDownloadTemplate = () => {
-        const headers = ['Name', 'LocationID', 'Description', 'StartDateTime', 'EndDateTime', 'Capacity', 'Category', 'Levels', 'Mode', 'ReqStudents', 'ReqTeachers'];
-        const sample = ['"การแข่งขันหุ่นยนต์"', 'LOC-001', '"รายละเอียดกิจกรรม"', '2024-12-25 09:00', '2024-12-25 12:00', '0', 'หุ่นยนต์', 'ม.1-3', 'Team', '3', '1'];
-        const csvContent = "\uFEFF" + [headers.join(','), sample.join(',')].join('\n');
+        const headers = ['Name', 'LocationID', 'Description', 'StartDateTime', 'EndDateTime', 'Capacity', 'Category', 'Levels', 'Mode', 'ReqStudents', 'ReqTeachers', 'RequirePhoto', 'IsLocked'];
+        const sample1 = ['"การแข่งขันหุ่นยนต์"', 'LOC-001', '"รายละเอียดกิจกรรม"', '2024-12-25 09:00', '2024-12-25 12:00', '0', 'หุ่นยนต์', 'ม.1-3', 'Team', '3', '1', 'FALSE', 'FALSE'];
+        const sample2 = ['"การประกวดโครงงาน"', 'LOC-002', '"จัดที่ห้องประชุม"', '2024-12-25 13:00', '2024-12-25 16:00', '20', 'วิทยาศาสตร์', 'ป.4-6', 'Team', '3', '1', 'TRUE', 'FALSE'];
+        
+        const csvContent = "\uFEFF" + [headers.join(','), sample1.join(','), sample2.join(',')].join('\n');
         
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
@@ -229,40 +229,85 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         const file = e.target.files?.[0];
         if (!file) return;
         setIsImporting(true);
+        setAlertMessage({ type: 'loading', text: 'กำลังนำเข้าข้อมูล...' });
+
         const reader = new FileReader();
         reader.onload = async (evt) => {
-            const text = evt.target?.result as string;
-            const lines = text.split('\n').filter(l => l.trim());
-            const promises = [];
-            // Skip header (i=1)
-            for (let i = 1; i < lines.length; i++) {
-                // Basic CSV split - warning: simple split doesn't handle commas inside quotes perfectly without regex
-                // Using regex for better CSV parsing: 
-                const matches = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',');
-                const cols = matches.map((c: string) => c.replace(/^"|"$/g, '').trim());
+            try {
+                const text = evt.target?.result as string;
+                const lines = text.split(/\r\n|\n/).filter(l => l.trim());
+                const promises = [];
+                let successCount = 0;
 
-                if (cols.length >= 2) {
-                    const newAct = {
-                        Name: cols[0],
-                        LocationID: cols[1],
-                        Description: cols[2] || '',
-                        StartDateTime: cols[3] || '',
-                        EndDateTime: cols[4] || '',
-                        Capacity: parseInt(cols[5]) || 0,
-                        Category: cols[6] || '',
-                        Levels: cols[7] || '',
-                        Mode: cols[8] || '',
-                        ReqStudents: parseInt(cols[9]) || 0,
-                        ReqTeachers: parseInt(cols[10]) || 0,
-                    };
-                    promises.push(saveActivity(newAct));
+                // Simple helper to parse CSV line respecting quotes
+                const parseLine = (line: string) => {
+                    const result = [];
+                    let start = 0;
+                    let inQuotes = false;
+                    for (let i = 0; i < line.length; i++) {
+                        if (line[i] === '"') inQuotes = !inQuotes;
+                        else if (line[i] === ',' && !inQuotes) {
+                            result.push(line.substring(start, i).replace(/^"|"$/g, '').replace(/""/g, '"').trim());
+                            start = i + 1;
+                        }
+                    }
+                    result.push(line.substring(start).replace(/^"|"$/g, '').replace(/""/g, '"').trim());
+                    return result;
+                };
+
+                // Skip header (i=1)
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = parseLine(lines[i]);
+                    
+                    // Basic validation: Name required
+                    if (cols.length >= 1 && cols[0]) {
+                        
+                        // Parse Date Strings (YYYY-MM-DD HH:mm expected in CSV)
+                        const parseDate = (d: string) => {
+                            if (!d) return '';
+                            // Try basic ISO parsing
+                            const parsed = new Date(d);
+                            if (!isNaN(parsed.getTime())) return parsed.toISOString();
+                            return '';
+                        };
+
+                        const newAct: Partial<CheckInActivity> = {
+                            Name: cols[0],
+                            LocationID: cols[1] || '',
+                            Description: cols[2] || '',
+                            StartDateTime: parseDate(cols[3]),
+                            EndDateTime: parseDate(cols[4]),
+                            Capacity: parseInt(cols[5]) || 0,
+                            Category: cols[6] || '',
+                            Levels: cols[7] || '',
+                            Mode: cols[8] || '',
+                            ReqStudents: parseInt(cols[9]) || 0,
+                            ReqTeachers: parseInt(cols[10]) || 0,
+                            RequirePhoto: (cols[11] || '').toUpperCase() === 'TRUE',
+                            IsLocked: (cols[12] || '').toUpperCase() === 'TRUE',
+                            Status: 'Active',
+                            ManualOverride: ''
+                        };
+                        promises.push(saveActivity(newAct));
+                    }
                 }
+
+                if (promises.length > 0) {
+                    await Promise.all(promises);
+                    successCount = promises.length;
+                    setAlertMessage({ type: 'success', text: `นำเข้าสำเร็จ ${successCount} รายการ` });
+                    onDataUpdate();
+                } else {
+                    setAlertMessage({ type: 'error', text: 'ไม่พบข้อมูลที่ถูกต้องในไฟล์' });
+                }
+
+            } catch (err) {
+                console.error(err);
+                setAlertMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการอ่านไฟล์ CSV' });
+            } finally {
+                setIsImporting(false);
+                if (fileInputRef.current) fileInputRef.current.value = '';
             }
-            await Promise.all(promises);
-            setIsImporting(false);
-            setAlertMessage({ type: 'success', text: `นำเข้าสำเร็จ ${promises.length} รายการ` });
-            onDataUpdate();
-            if (fileInputRef.current) fileInputRef.current.value = '';
         };
         reader.readAsText(file);
     };
@@ -294,7 +339,6 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
 
     const handleStatusClick = (act: CheckInActivity) => {
         let nextStatus: 'OPEN' | 'CLOSED' | '' = '';
-        // Cycle logic: Auto (empty) -> OPEN -> CLOSED -> Auto
         if (!act.ManualOverride) nextStatus = 'OPEN';
         else if (act.ManualOverride === 'OPEN') nextStatus = 'CLOSED';
         else nextStatus = '';
@@ -364,12 +408,20 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     return (
         <div className="space-y-4 relative">
             
-            {/* Alert Toast */}
+            {/* Global Alert Toast */}
             {alertMessage && (
-                <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[300] px-6 py-3 rounded-full shadow-xl flex items-center animate-in slide-in-from-top-5 fade-in duration-300 ${alertMessage.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-                    {alertMessage.type === 'success' ? <CheckCircle className="w-5 h-5 mr-2" /> : <AlertTriangle className="w-5 h-5 mr-2" />}
+                <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[300] px-6 py-3 rounded-full shadow-xl flex items-center animate-in slide-in-from-top-5 fade-in duration-300 ${
+                    alertMessage.type === 'success' ? 'bg-green-600 text-white' : 
+                    alertMessage.type === 'error' ? 'bg-red-600 text-white' : 
+                    'bg-blue-600 text-white'
+                }`}>
+                    {alertMessage.type === 'success' ? <CheckCircle className="w-5 h-5 mr-2" /> : 
+                     alertMessage.type === 'error' ? <AlertTriangle className="w-5 h-5 mr-2" /> :
+                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />}
                     <span className="font-bold text-sm">{alertMessage.text}</span>
-                    <button onClick={() => setAlertMessage(null)} className="ml-4 opacity-80 hover:opacity-100"><X className="w-4 h-4"/></button>
+                    {alertMessage.type !== 'loading' && (
+                        <button onClick={() => setAlertMessage(null)} className="ml-4 opacity-80 hover:opacity-100"><X className="w-4 h-4"/></button>
+                    )}
                 </div>
             )}
 

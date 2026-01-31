@@ -1,11 +1,12 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AppData, CheckInActivity } from '../../types';
-import { Search, Plus, Activity, MapPin, Clock, Edit2, Trash2, History, Upload, Loader2, Power, AlertTriangle, Share2, CheckCircle, X, Camera, Lock, Users, ShieldAlert, Tag, GraduationCap, LayoutGrid, List, Download, FileSpreadsheet, CheckSquare, Square, Filter, RefreshCw, AlertOctagon } from 'lucide-react';
+import { Search, Plus, Activity, MapPin, Clock, Edit2, Trash2, History, Upload, Loader2, Power, AlertTriangle, Share2, CheckCircle, X, Camera, Lock, Users, Tag, LayoutGrid, List, Download, FileSpreadsheet, CheckSquare, Square, Filter, RefreshCw, AlertOctagon, ChevronLeft, ChevronRight, ArrowUpDown, QrCode } from 'lucide-react';
 import { deleteActivity, saveActivity } from '../../services/api';
 import ActivityModal from './ActivityModal';
 import ConfirmationModal from '../ConfirmationModal';
 import { shareCheckInActivity } from '../../services/liff';
+import QRCode from 'qrcode';
 
 interface ActivitiesTabProps {
     data: AppData;
@@ -31,8 +32,13 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [levelFilter, setLevelFilter] = useState('all');
     
-    // View Mode State
-    const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+    // View Mode & Pagination State
+    const [viewMode, setViewMode] = useState<'grid' | 'table'>('table'); // Default to table for better management
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
+
+    // Sorting State
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'Status', direction: 'asc' });
     
     // Selection State (Bulk Actions)
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -46,6 +52,9 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; id: string; title: string }>({ isOpen: false, id: '', title: '' });
     const [statusModal, setStatusModal] = useState<{ isOpen: boolean; act: CheckInActivity | null; nextStatus: 'OPEN' | 'CLOSED' | '' }>({ isOpen: false, act: null, nextStatus: '' });
     
+    // Quick QR Modal State
+    const [qrModal, setQrModal] = useState<{ isOpen: boolean; act: CheckInActivity | null; qrUrl: string }>({ isOpen: false, act: null, qrUrl: '' });
+
     // Bulk Action Modals State
     const [bulkStatusModal, setBulkStatusModal] = useState<{ isOpen: boolean; status: 'OPEN' | 'CLOSED' | '' }>({ isOpen: false, status: '' });
     const [bulkDeleteModal, setBulkDeleteModal] = useState(false);
@@ -58,8 +67,9 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     const [isImporting, setIsImporting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Reset selection when filters change
+    // Reset pagination and selection when filters change
     useEffect(() => {
+        setCurrentPage(1);
         setSelectedIds(new Set());
     }, [searchActivityQuery, activityStatusFilter, categoryFilter, levelFilter]);
 
@@ -74,8 +84,8 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     const isDateValid = (d: any) => d && !isNaN(new Date(d).getTime());
 
     const getActivityStatus = (act: CheckInActivity) => {
-        if (act.ManualOverride === 'CLOSED') return { label: 'ปิดชั่วคราว (Manual)', color: 'bg-red-500 text-white', text: 'text-red-600', key: 'ended' };
-        if (act.ManualOverride === 'OPEN') return { label: 'เปิดพิเศษ (Manual)', color: 'bg-green-500 text-white', text: 'text-green-600', key: 'active' };
+        if (act.ManualOverride === 'CLOSED') return { label: 'ปิดชั่วคราว (Manual)', color: 'bg-red-500 text-white', text: 'text-red-600', key: 'ended', priority: 4 };
+        if (act.ManualOverride === 'OPEN') return { label: 'เปิดพิเศษ (Manual)', color: 'bg-green-500 text-white', text: 'text-green-600', key: 'active', priority: 1 };
 
         const now = new Date();
         const start = isDateValid(act.StartDateTime) ? new Date(act.StartDateTime!) : null;
@@ -83,14 +93,22 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         const count = act.CurrentCount || 0;
         const cap = act.Capacity || 0;
 
-        if (start && start > now) return { label: 'ยังไม่เริ่ม', color: 'bg-blue-100 text-blue-700', text: 'text-blue-600', key: 'upcoming' };
-        if (end && end < now) return { label: 'จบแล้ว', color: 'bg-gray-100 text-gray-500', text: 'text-gray-500', key: 'ended' };
-        if (cap > 0 && count >= cap) return { label: 'เต็ม', color: 'bg-red-100 text-red-700', text: 'text-red-600', key: 'active' };
-        return { label: 'กำลังดำเนินอยู่', color: 'bg-green-100 text-green-700', text: 'text-green-600', key: 'active' };
+        if (start && start > now) return { label: 'ยังไม่เริ่ม', color: 'bg-blue-100 text-blue-700', text: 'text-blue-600', key: 'upcoming', priority: 2 };
+        if (end && end < now) return { label: 'จบแล้ว', color: 'bg-gray-100 text-gray-500', text: 'text-gray-500', key: 'ended', priority: 5 };
+        if (cap > 0 && count >= cap) return { label: 'เต็ม', color: 'bg-red-100 text-red-700', text: 'text-red-600', key: 'active', priority: 3 };
+        return { label: 'กำลังดำเนินอยู่', color: 'bg-green-100 text-green-700', text: 'text-green-600', key: 'active', priority: 0 };
+    };
+
+    // --- Sorting Logic ---
+    const handleSort = (key: string) => {
+        setSortConfig(prev => ({
+            key,
+            direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+        }));
     };
 
     const filteredActivities = useMemo(() => {
-        return (data.checkInActivities || []).filter(act => {
+        let result = (data.checkInActivities || []).filter(act => {
             const matchesSearch = act.Name.toLowerCase().includes(searchActivityQuery.toLowerCase());
             const status = getActivityStatus(act);
             const matchesStatus = activityStatusFilter === 'all' || status.key === activityStatusFilter;
@@ -98,12 +116,46 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
             const matchesLevel = levelFilter === 'all' || (act.Levels && act.Levels.includes(levelFilter));
             
             return matchesSearch && matchesStatus && matchesCategory && matchesLevel;
-        }).sort((a, b) => {
-            const statusA = getActivityStatus(a).key === 'active' ? 0 : 1;
-            const statusB = getActivityStatus(b).key === 'active' ? 0 : 1;
-            return statusA - statusB;
         });
-    }, [data.checkInActivities, searchActivityQuery, activityStatusFilter, categoryFilter, levelFilter]);
+
+        // Apply Sort
+        result.sort((a, b) => {
+            let valA: any = '';
+            let valB: any = '';
+
+            switch (sortConfig.key) {
+                case 'Name': valA = a.Name; valB = b.Name; break;
+                case 'StartDateTime': valA = a.StartDateTime ? new Date(a.StartDateTime).getTime() : 0; valB = b.StartDateTime ? new Date(b.StartDateTime).getTime() : 0; break;
+                case 'CurrentCount': valA = a.CurrentCount || 0; valB = b.CurrentCount || 0; break;
+                case 'Status': valA = getActivityStatus(a).priority; valB = getActivityStatus(b).priority; break;
+                default: valA = a.Name; valB = b.Name;
+            }
+
+            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        return result;
+    }, [data.checkInActivities, searchActivityQuery, activityStatusFilter, categoryFilter, levelFilter, sortConfig]);
+
+    // --- Pagination Logic ---
+    const totalPages = Math.ceil(filteredActivities.length / itemsPerPage);
+    const paginatedActivities = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredActivities.slice(start, start + itemsPerPage);
+    }, [filteredActivities, currentPage, itemsPerPage]);
+
+    // --- Quick QR Preview ---
+    const handleQrPreview = async (act: CheckInActivity) => {
+        const url = `${window.location.origin}${window.location.pathname}#/checkin/${act.ActivityID}`;
+        try {
+            const qrDataUrl = await QRCode.toDataURL(url, { margin: 1, width: 300 });
+            setQrModal({ isOpen: true, act, qrUrl: qrDataUrl });
+        } catch (e) {
+            console.error("QR Generation Failed", e);
+        }
+    };
 
     const getImageUrl = (idOrUrl: string) => {
         if (!idOrUrl) return '';
@@ -114,10 +166,10 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
     // --- Bulk Actions Handlers ---
 
     const handleSelectAll = () => {
-        if (selectedIds.size === filteredActivities.length && filteredActivities.length > 0) {
+        if (selectedIds.size === paginatedActivities.length && paginatedActivities.length > 0) {
             setSelectedIds(new Set());
         } else {
-            setSelectedIds(new Set(filteredActivities.map(a => a.ActivityID)));
+            setSelectedIds(new Set(paginatedActivities.map(a => a.ActivityID)));
         }
     };
 
@@ -137,7 +189,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         const overrideStatus = bulkStatusModal.status;
         setIsProcessingBulk(true);
         try {
-            // Batch processing to prevent network flood
+            // Batch processing
             const ids = Array.from(selectedIds);
             const BATCH_SIZE = 5;
             for (let i = 0; i < ids.length; i += BATCH_SIZE) {
@@ -147,7 +199,6 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                     if (act) return saveActivity({ ...act, ManualOverride: overrideStatus });
                     return Promise.resolve();
                 }));
-                // Small delay between batches
                 await new Promise(r => setTimeout(r, 200));
             }
             setAlertMessage({ type: 'success', text: 'อัปเดตสถานะกลุ่มสำเร็จ' });
@@ -174,7 +225,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
             for (let i = 0; i < ids.length; i += BATCH_SIZE) {
                 const batch = ids.slice(i, i + BATCH_SIZE);
                 await Promise.all(batch.map(id => deleteActivity(id)));
-                await new Promise(r => setTimeout(r, 300)); // Delay for delete consistency
+                await new Promise(r => setTimeout(r, 300));
             }
             setAlertMessage({ type: 'success', text: 'ลบข้อมูลกลุ่มสำเร็จ' });
             onDataUpdate();
@@ -242,19 +293,16 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         if (!file) return;
         
         setIsImporting(true);
-        setAlertMessage({ type: 'loading', text: 'กำลังเตรียมนำเข้าข้อมูล...' });
+        setAlertMessage({ type: 'loading', text: 'กำลังตรวจสอบข้อมูล...' });
 
         const reader = new FileReader();
         reader.onload = async (evt) => {
             try {
                 let text = evt.target?.result as string;
-                // Remove BOM if present
-                if (text.charCodeAt(0) === 0xFEFF) {
-                    text = text.substr(1);
-                }
+                if (text.charCodeAt(0) === 0xFEFF) text = text.substr(1);
 
-                // Robust CSV Parser State Machine
-                // Correctly handles commas inside quotes and multi-line fields
+                // Simple Parser (Can reuse the robust one from previous iteration if preferred)
+                // Using Robust Parser Logic for Safety
                 const rows: string[][] = [];
                 let currentRow: string[] = [];
                 let currentField = '';
@@ -263,122 +311,86 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                 for (let i = 0; i < text.length; i++) {
                     const char = text[i];
                     const nextChar = text[i + 1];
-
                     if (inQuotes) {
                         if (char === '"') {
-                            if (nextChar === '"') {
-                                // Escaped quote ("") -> becomes (")
-                                currentField += '"';
-                                i++; // Skip next quote
-                            } else {
-                                // Closing quote
-                                inQuotes = false;
-                            }
-                        } else {
-                            currentField += char;
-                        }
+                            if (nextChar === '"') { currentField += '"'; i++; } else { inQuotes = false; }
+                        } else { currentField += char; }
                     } else {
-                        if (char === '"') {
-                            inQuotes = true;
-                        } else if (char === ',') {
-                            // End of field
-                            currentRow.push(currentField.trim());
-                            currentField = '';
-                        } else if (char === '\r' || char === '\n') {
-                            // End of row
-                            if (char === '\r' && nextChar === '\n') i++; // Handle CRLF
-                            
+                        if (char === '"') { inQuotes = true; } 
+                        else if (char === ',') { currentRow.push(currentField.trim()); currentField = ''; } 
+                        else if (char === '\r' || char === '\n') {
+                            if (char === '\r' && nextChar === '\n') i++;
                             currentRow.push(currentField.trim());
                             rows.push(currentRow);
                             currentRow = [];
                             currentField = '';
-                        } else {
-                            currentField += char;
-                        }
+                        } else { currentField += char; }
                     }
                 }
-                
-                // Push last row if exists
-                if (currentField || currentRow.length > 0) {
-                    currentRow.push(currentField.trim());
-                    rows.push(currentRow);
-                }
+                if (currentField || currentRow.length > 0) { currentRow.push(currentField.trim()); rows.push(currentRow); }
 
-                // Filter out empty rows
                 const validRows = rows.filter(r => r.length > 0 && r.some(c => c !== ''));
-
                 const actsToSave: Partial<CheckInActivity>[] = [];
+                let updateCount = 0;
+                let createCount = 0;
+
+                // Existing Map for quick lookup
+                const existingMap = new Map(data.checkInActivities.map(a => [a.Name.toLowerCase().trim(), a]));
 
                 // Skip header (i=1)
                 for (let i = 1; i < validRows.length; i++) {
                     const cols = validRows[i];
-                    
-                    // Basic validation: Name required (Index 0)
                     if (cols.length >= 1 && cols[0]) {
-                        // Safe date parser supporting ISO with Timezone
+                        const actName = cols[0];
                         const parseDate = (d: string) => {
                             if (!d) return '';
                             const cleanDate = d.trim();
                             const parsed = new Date(cleanDate);
-                            // Check if valid date
-                            if (!isNaN(parsed.getTime())) {
-                                // Convert to ISO string for backend consistency
-                                return parsed.toISOString();
-                            }
+                            if (!isNaN(parsed.getTime())) return parsed.toISOString();
                             return '';
                         };
 
+                        // Check duplicate
+                        const existingAct = existingMap.get(actName.toLowerCase().trim());
+                        
                         const newAct: Partial<CheckInActivity> = {
-                            Name: cols[0],
-                            LocationID: cols[1] || '',
-                            Description: cols[2] || '',
-                            StartDateTime: parseDate(cols[3]),
-                            EndDateTime: parseDate(cols[4]),
-                            Capacity: parseInt(cols[5]) || 0,
-                            Category: cols[6] || '',
-                            Levels: cols[7] || '',
-                            Mode: cols[8] || '',
-                            ReqStudents: parseInt(cols[9]) || 0,
-                            ReqTeachers: parseInt(cols[10]) || 0,
+                            ActivityID: existingAct ? existingAct.ActivityID : undefined, // Keep ID if updating
+                            Name: actName,
+                            LocationID: cols[1] || existingAct?.LocationID || '',
+                            Description: cols[2] || existingAct?.Description || '',
+                            StartDateTime: parseDate(cols[3]) || existingAct?.StartDateTime,
+                            EndDateTime: parseDate(cols[4]) || existingAct?.EndDateTime,
+                            Capacity: parseInt(cols[5]) || existingAct?.Capacity || 0,
+                            Category: cols[6] || existingAct?.Category || '',
+                            Levels: cols[7] || existingAct?.Levels || '',
+                            Mode: cols[8] || existingAct?.Mode || '',
+                            ReqStudents: parseInt(cols[9]) || existingAct?.ReqStudents || 0,
+                            ReqTeachers: parseInt(cols[10]) || existingAct?.ReqTeachers || 0,
                             RequirePhoto: (cols[11] || '').toUpperCase() === 'TRUE',
                             IsLocked: (cols[12] || '').toUpperCase() === 'TRUE',
                             Status: 'Active',
                             ManualOverride: ''
                         };
+                        
+                        if (existingAct) updateCount++; else createCount++;
                         actsToSave.push(newAct);
                     }
                 }
 
                 if (actsToSave.length > 0) {
-                    // --- BATCH PROCESSING TO PREVENT CORS/RATE LIMIT ERROR ---
-                    const BATCH_SIZE = 3; // Conservative batch size for GAS
-                    let successCount = 0;
+                    setAlertMessage({ type: 'loading', text: `กำลังบันทึก (ใหม่: ${createCount}, อัปเดต: ${updateCount})...` });
                     
+                    const BATCH_SIZE = 3;
                     for (let i = 0; i < actsToSave.length; i += BATCH_SIZE) {
                         const batch = actsToSave.slice(i, i + BATCH_SIZE);
-                        const progress = Math.round(((i + batch.length) / actsToSave.length) * 100);
-                        
-                        setAlertMessage({ type: 'loading', text: `กำลังบันทึก ${progress}% (${i + batch.length}/${actsToSave.length})` });
-                        
-                        try {
-                            await Promise.all(batch.map(act => saveActivity(act)));
-                            successCount += batch.length;
-                        } catch (err) {
-                            console.error("Batch save error:", err);
-                            // Continue to next batch even if this one failed partially?
-                            // For import, maybe better to try continuing.
-                        }
-                        
-                        // Delay between batches to be nice to the server
-                        if (i + BATCH_SIZE < actsToSave.length) {
-                            await new Promise(r => setTimeout(r, 500));
-                        }
+                        await Promise.all(batch.map(act => saveActivity(act)));
+                        if (i + BATCH_SIZE < actsToSave.length) await new Promise(r => setTimeout(r, 500));
                     }
 
-                    setAlertMessage({ type: 'success', text: `นำเข้าสำเร็จ ${successCount} จาก ${actsToSave.length} รายการ` });
+                    setAlertMessage({ type: 'success', text: `บันทึกสำเร็จ (ใหม่: ${createCount}, อัปเดต: ${updateCount})` });
                     onDataUpdate();
                 } else {
-                    setAlertMessage({ type: 'error', text: 'ไม่พบข้อมูลที่ถูกต้องในไฟล์ หรือรูปแบบไม่ถูกต้อง' });
+                    setAlertMessage({ type: 'error', text: 'ไม่พบข้อมูลในไฟล์ CSV' });
                 }
 
             } catch (err) {
@@ -449,7 +461,6 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         }
     };
 
-    // Render logic for Status Modal Content
     const getStatusModalContent = (nextStatus: string) => {
         if (nextStatus === 'OPEN') {
             return (
@@ -458,7 +469,6 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                     <h4 className="font-bold text-green-800">เปิดระบบเช็คอิน (Force Open)</h4>
                     <p className="text-xs text-green-600 mt-1 text-center">
                         ระบบจะเปิดให้เช็คอินได้ทันทีโดยไม่สนใจเวลาเริ่มต้น-สิ้นสุด 
-                        ผู้ใช้งานจะสามารถกดเช็คอินได้ตลอดเวลาจนกว่าจะเปลี่ยนสถานะ
                     </p>
                 </div>
             );
@@ -468,7 +478,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                     <AlertOctagon className="w-10 h-10 text-red-500 mb-2" />
                     <h4 className="font-bold text-red-800">ปิดระบบเช็คอิน (Force Close)</h4>
                     <p className="text-xs text-red-600 mt-1 text-center">
-                        ระบบจะปิดรับการเช็คอินทันที ผู้ใช้งานจะไม่สามารถเช็คอินได้แม้จะอยู่ในช่วงเวลาที่กำหนด
+                        ระบบจะปิดรับการเช็คอินทันที ผู้ใช้งานจะไม่สามารถเช็คอินได้
                     </p>
                 </div>
             );
@@ -478,7 +488,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                     <RefreshCw className="w-10 h-10 text-blue-500 mb-2" />
                     <h4 className="font-bold text-blue-800">โหมดอัตโนมัติ (Auto / Default)</h4>
                     <p className="text-xs text-blue-600 mt-1 text-center">
-                        ระบบจะเปิด-ปิดตามเวลา Start/End DateTime และจำนวน Capacity ที่ตั้งไว้ในกิจกรรม
+                        ระบบจะเปิด-ปิดตามเวลา Start/End DateTime และจำนวน Capacity
                     </p>
                 </div>
             );
@@ -502,6 +512,23 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                     {alertMessage.type !== 'loading' && (
                         <button onClick={() => setAlertMessage(null)} className="ml-4 opacity-80 hover:opacity-100"><X className="w-4 h-4"/></button>
                     )}
+                </div>
+            )}
+
+            {/* Quick QR Modal */}
+            {qrModal.isOpen && (
+                <div className="fixed inset-0 z-[400] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in">
+                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center relative shadow-2xl animate-in zoom-in-95">
+                        <button onClick={() => setQrModal({ isOpen: false, act: null, qrUrl: '' })} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X className="w-5 h-5 text-gray-500"/></button>
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">{qrModal.act?.Name}</h3>
+                        <p className="text-sm text-gray-500 mb-6">Scan to Check-in</p>
+                        <div className="bg-white p-2 rounded-xl border-4 border-dashed border-gray-200 inline-block mb-4">
+                            <img src={qrModal.qrUrl} alt="QR Code" className="w-48 h-48 object-contain" />
+                        </div>
+                        <div className="flex justify-center">
+                            <a href={qrModal.qrUrl} download={`qr_${qrModal.act?.ActivityID}.png`} className="text-blue-600 text-sm font-bold hover:underline flex items-center"><Download className="w-4 h-4 mr-1"/> Download Image</a>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -577,15 +604,24 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                         </select>
                     </div>
 
-                    <div className="ml-auto flex gap-2">
+                    {/* Pagination Selector */}
+                    <div className="flex items-center gap-1 bg-white border border-gray-300 rounded-lg px-2 py-1 ml-auto">
+                        <span className="text-[10px] text-gray-500">แสดง:</span>
+                        <select className="text-xs bg-transparent outline-none py-1" value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))}>
+                            <option value="10">10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+
+                    <div className="flex gap-2 ml-2">
                         <button onClick={handleDownloadTemplate} className="text-gray-500 hover:text-blue-600 p-2" title="โหลดไฟล์ตัวอย่าง CSV"><FileSpreadsheet className="w-5 h-5"/></button>
                         <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="p-2 text-gray-500 hover:text-green-600 disabled:opacity-50" title="นำเข้า CSV">
                             {isImporting ? <Loader2 className="w-5 h-5 animate-spin"/> : <Upload className="w-5 h-5"/>}
                         </button>
                         <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleImportCSV} />
-                        
                         <button onClick={handleExportCSV} className="p-2 text-gray-500 hover:text-purple-600" title="ส่งออก CSV"><Download className="w-5 h-5"/></button>
-                        
                         <button onClick={handleAdd} className="flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-bold shadow-sm">
                             <Plus className="w-4 h-4 mr-1" /> เพิ่ม
                         </button>
@@ -597,7 +633,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
             {viewMode === 'grid' ? (
                 // --- Grid View ---
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredActivities.map(act => {
+                    {paginatedActivities.map(act => {
                         const status = getActivityStatus(act);
                         const parseBool = (val: any) => val === true || String(val).toUpperCase() === 'TRUE';
                         const isSelected = selectedIds.has(act.ActivityID);
@@ -613,6 +649,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${status.color}`}>{status.label}</span>
                                     </div>
                                     <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                                        <button onClick={() => handleQrPreview(act)} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded" title="QR Code"><QrCode className="w-4 h-4" /></button>
                                         <button onClick={() => handleShare(act)} className="p-1.5 text-green-600 hover:bg-green-50 rounded"><Share2 className="w-4 h-4" /></button>
                                         <button onClick={() => onViewLogs(act.Name)} className="p-1.5 text-purple-600 hover:bg-purple-50 rounded"><History className="w-4 h-4" /></button>
                                         <button onClick={() => handleEdit(act)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 className="w-4 h-4"/></button>
@@ -653,18 +690,24 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                                 <tr>
                                     <th className="px-4 py-3 w-10 text-center">
                                         <button onClick={handleSelectAll} className="text-gray-400 hover:text-blue-600">
-                                            {selectedIds.size === filteredActivities.length && filteredActivities.length > 0 ? <CheckSquare className="w-5 h-5 text-blue-600"/> : <Square className="w-5 h-5"/>}
+                                            {selectedIds.size === paginatedActivities.length && paginatedActivities.length > 0 ? <CheckSquare className="w-5 h-5 text-blue-600"/> : <Square className="w-5 h-5"/>}
                                         </button>
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">กิจกรรม</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('Name')}>
+                                        กิจกรรม <ArrowUpDown className="w-3 h-3 inline ml-1"/>
+                                    </th>
                                     <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">หมวดหมู่/ระดับ</th>
-                                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">สถานะ</th>
-                                    <th className="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase">Stats</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('Status')}>
+                                        สถานะ <ArrowUpDown className="w-3 h-3 inline ml-1"/>
+                                    </th>
+                                    <th className="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('CurrentCount')}>
+                                        Stats <ArrowUpDown className="w-3 h-3 inline ml-1"/>
+                                    </th>
                                     <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">จัดการ</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {filteredActivities.map(act => {
+                                {paginatedActivities.map(act => {
                                     const status = getActivityStatus(act);
                                     const locName = (data.checkInLocations || []).find(l => l.LocationID === act.LocationID)?.Name || '-';
                                     const isSelected = selectedIds.has(act.ActivityID);
@@ -698,6 +741,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex justify-end gap-2" onClick={e => e.stopPropagation()}>
+                                                    <button onClick={() => handleQrPreview(act)} className="p-1.5 border rounded hover:bg-gray-100" title="Show QR"><QrCode className="w-4 h-4 text-gray-500"/></button>
                                                     <button onClick={() => handleStatusClick(act)} className="p-1.5 border rounded hover:bg-gray-100" title="Toggle Status"><Power className="w-4 h-4 text-gray-600"/></button>
                                                     <button onClick={() => handleEdit(act)} className="p-1.5 border rounded hover:bg-blue-50" title="Edit"><Edit2 className="w-4 h-4 text-blue-600"/></button>
                                                     <button onClick={() => handleDeleteClick(act)} className="p-1.5 border rounded hover:bg-red-50" title="Delete"><Trash2 className="w-4 h-4 text-red-600"/></button>
@@ -708,6 +752,51 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                                 })}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+                <div className="flex justify-between items-center mt-4 px-4 py-2 bg-white rounded-xl border border-gray-100">
+                    <div className="text-xs text-gray-500">
+                        แสดงหน้า {currentPage} จาก {totalPages} (ทั้งหมด {filteredActivities.length} รายการ)
+                    </div>
+                    <div className="flex gap-2">
+                        <button 
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="p-1.5 rounded border hover:bg-gray-50 disabled:opacity-50"
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        {/* Page Numbers */}
+                        <div className="flex items-center gap-1">
+                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                let p = currentPage;
+                                if (totalPages <= 5) p = i + 1;
+                                else if (currentPage <= 3) p = i + 1;
+                                else if (currentPage >= totalPages - 2) p = totalPages - 4 + i;
+                                else p = currentPage - 2 + i;
+
+                                return (
+                                    <button
+                                        key={p}
+                                        onClick={() => setCurrentPage(p)}
+                                        className={`w-6 h-6 text-xs rounded ${currentPage === p ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                                    >
+                                        {p}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <button 
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="p-1.5 rounded border hover:bg-gray-50 disabled:opacity-50"
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
                     </div>
                 </div>
             )}

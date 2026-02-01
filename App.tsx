@@ -46,7 +46,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
   
-  // Use sessionStorage for pendingRedirect to survive LIFF redirects
+  // Use sessionStorage for pendingRedirect to survive LIFF redirects/reloads during auth
   const getPendingRedirect = () => sessionStorage.getItem('pendingRedirect');
   const setPendingRedirect = (path: string | null) => {
       if (path) sessionStorage.setItem('pendingRedirect', path);
@@ -71,24 +71,33 @@ const App: React.FC = () => {
       loadData();
       
       const initializeAuth = async () => {
-          // Check local storage first
-          const savedUser = localStorage.getItem('comp_user');
-          if (savedUser) {
-              setUser(JSON.parse(savedUser));
-              return;
-          }
-
-          // Capture current hash path before LIFF init/redirect logic
-          // This handles cases where user clicks a Flex Message link like .../#/checkin/ACT-001
+          // 1. Capture current hash path immediately (The destination from QR)
+          // This handles cases where user scans QR .../#/checkin/ACT-001
           const currentHash = window.location.hash;
-          if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login')) {
+          // Filter out default paths or login paths to avoid loops
+          if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login') && !currentHash.startsWith('#/profile')) {
               // Store path without the '#' if not already set (preserve earliest intent)
               if (!getPendingRedirect()) {
                   setPendingRedirect(currentHash.substring(1));
+                  console.log("Pending redirect saved:", currentHash.substring(1));
               }
           }
 
-          // Try LIFF Init
+          // 2. Check local storage first (Fast load)
+          const savedUser = localStorage.getItem('comp_user');
+          if (savedUser) {
+              const u = JSON.parse(savedUser);
+              setUser(u);
+              // If we have a user and a pending redirect, go there
+              const redirect = getPendingRedirect();
+              if (redirect) {
+                  setPendingRedirect(null);
+                  setTimeout(() => window.location.hash = redirect, 100);
+              }
+              return;
+          }
+
+          // 3. Try LIFF Init (If no local user)
           try {
               const profile = await initLiff();
               if (profile) {
@@ -111,7 +120,7 @@ const App: React.FC = () => {
                            Prefix: ''
                       };
                       setUser(partialUser);
-                      setIsRegistering(true);
+                      setIsRegistering(true); // Force registration view
                   }
               }
           } catch (e) {
@@ -127,10 +136,10 @@ const App: React.FC = () => {
       setIsRegistering(false);
       localStorage.setItem('comp_user', JSON.stringify(u));
       
-      // Check for pending redirect
+      // Check for pending redirect after login
       const redirect = getPendingRedirect();
       if (redirect) {
-          // Clear it
+          console.log("Redirecting to pending:", redirect);
           setPendingRedirect(null);
           // Allow UI to update then redirect
           setTimeout(() => {
@@ -147,10 +156,15 @@ const App: React.FC = () => {
       if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
           setIsRegistering(false);
           
+          // Check for pending redirect after registration
           const redirect = getPendingRedirect();
           if (redirect) {
+              console.log("Registration complete. Redirecting to:", redirect);
               setPendingRedirect(null);
-              window.location.hash = redirect;
+              // Force redirect
+              setTimeout(() => {
+                  window.location.hash = redirect;
+              }, 100);
           }
       }
   };
@@ -200,7 +214,7 @@ const App: React.FC = () => {
         <Routes>
             <Route path="/" element={<Navigate to={isRegistering ? "/profile" : "/home"} replace />} />
 
-            {/* Force profile for registration */}
+            {/* Force profile for registration (This will catch ANY route if isRegistering is true) */}
             {isRegistering && (
                 <Route path="*" element={
                     <Layout userProfile={user} data={data}>

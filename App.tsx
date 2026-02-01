@@ -53,6 +53,17 @@ const App: React.FC = () => {
       else sessionStorage.removeItem('pendingRedirect');
   };
 
+  // Helper to force hash update
+  const performRedirect = () => {
+      const redirect = getPendingRedirect();
+      if (redirect) {
+          console.log("Executing pending redirect:", redirect);
+          setPendingRedirect(null);
+          // Small delay to ensure Router is ready
+          setTimeout(() => window.location.hash = redirect, 100);
+      }
+  };
+
   useEffect(() => {
       const initApp = async () => {
           setLoading(true);
@@ -68,7 +79,6 @@ const App: React.FC = () => {
 
           try {
               // 2. Parallel Load: Data & Auth
-              // We define promises but handle them carefully to set state
               
               const dataPromise = fetchData().catch(e => {
                   console.error("Data Load Error", e);
@@ -89,7 +99,7 @@ const App: React.FC = () => {
                       
                       setUser(u);
                       
-                      // Background Validation (Fire & Forget for speed, or await if critical)
+                      // Background Validation
                       if (u.LineID || u.userline_id) {
                           checkUserRegistration(u.LineID || u.userline_id).then(dbUser => {
                               if (!dbUser) {
@@ -103,7 +113,9 @@ const App: React.FC = () => {
                               }
                           }).catch(e => console.warn("Background Auth Check Failed", e));
                       }
-                      return;
+                      
+                      // CRITICAL: Trigger redirect check after restoring session
+                      return true; // Signal success
                   }
 
                   // B. LIFF Init (if no local user)
@@ -114,6 +126,8 @@ const App: React.FC = () => {
                           if (dbUser) {
                               setUser(dbUser);
                               localStorage.setItem('comp_user', JSON.stringify(dbUser));
+                              // CRITICAL: Trigger redirect check after LIFF login
+                              return true;
                           } else {
                               // New User
                               const partialUser: any = { 
@@ -133,15 +147,23 @@ const App: React.FC = () => {
                   } catch (e) {
                       console.warn("LIFF Init Error", e);
                   }
+                  return false;
               })();
 
               // Wait for both
-              const [dataRes] = await Promise.all([dataPromise, authPromise]);
+              const [dataRes, authSuccess] = await Promise.all([dataPromise, authPromise]);
               if (dataRes) setData(dataRes);
+              
+              // Only stop loading after everything is done
+              setLoading(false);
+
+              // Perform redirect logic immediately after loading state clears
+              if (authSuccess) {
+                  setTimeout(performRedirect, 50); 
+              }
 
           } catch (err: any) {
               setError(err.message || "เกิดข้อผิดพลาดในการโหลด");
-          } finally {
               setLoading(false);
           }
       };
@@ -149,21 +171,11 @@ const App: React.FC = () => {
       initApp();
   }, []);
 
-  const checkAndRedirect = () => {
-      const redirect = getPendingRedirect();
-      if (redirect) {
-          console.log("Executing pending redirect:", redirect);
-          setPendingRedirect(null);
-          // Small delay to allow Router to mount/update
-          setTimeout(() => window.location.hash = redirect, 100);
-      }
-  };
-
   const handleLogin = (u: User) => {
       setUser(u);
       setIsRegistering(false);
       localStorage.setItem('comp_user', JSON.stringify(u));
-      checkAndRedirect();
+      performRedirect();
   };
 
   const handleUpdateUser = (updatedUser: User) => {
@@ -173,8 +185,7 @@ const App: React.FC = () => {
       if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
           console.log("Registration complete.");
           setIsRegistering(false);
-          // Force check redirect immediately
-          checkAndRedirect();
+          performRedirect();
       }
   };
 

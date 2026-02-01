@@ -16,7 +16,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const APP_VERSION = 'v1.0.1'; // Updated version
+  const APP_VERSION = 'v1.0.1'; 
   
   // Login State Machine
   const [loginStatus, setLoginStatus] = useState<'idle' | 'verifying' | 'success' | 'redirecting' | 'auto_redirecting'>('idle');
@@ -30,7 +30,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           // Conditions to trigger auto-login:
           // 1. Pending Redirect exists (scanned QR)
           // 2. Not a generic home/profile redirect
-          // 3. We haven't already tried to auto-redirect in this session (to prevent infinite loops if user cancels)
+          // 3. We haven't already tried to auto-redirect in this session (to prevent infinite loops)
           const hasAutoRedirected = sessionStorage.getItem('autoLoginAttempted');
 
           if (pendingRedirect && 
@@ -47,12 +47,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               // Delay slightly to let UI render, then redirect
               setTimeout(() => {
                   handleLineLogin();
-              }, 1500);
+              }, 1200);
           }
       };
 
-      checkAutoLogin();
-  }, []);
+      // Ensure we only run this if we aren't already in a success state
+      if (loginStatus === 'idle') {
+          checkAutoLogin();
+      }
+  }, [loginStatus]);
 
   const handleLineLogin = () => {
     loginLiff();
@@ -105,26 +108,38 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
                   <h3 className="text-xl font-bold text-[#00247D] mb-2">
                       {loginStatus === 'verifying' && 'กำลังตรวจสอบข้อมูล...'}
-                      {loginStatus === 'auto_redirecting' && 'กำลังเข้าสู่ระบบ LINE...'}
+                      {loginStatus === 'auto_redirecting' && 'กำลังเชื่อมต่อ LINE...'}
                       {loginStatus === 'success' && 'เข้าสู่ระบบสำเร็จ!'}
                       {loginStatus === 'redirecting' && 'กำลังเข้าสู่ Dashboard...'}
                   </h3>
                   
                   <p className="text-gray-500 text-sm mb-6">
                       {loginStatus === 'verifying' && 'กรุณารอสักครู่ ระบบกำลังยืนยันตัวตน'}
-                      {loginStatus === 'auto_redirecting' && 'ระบบตรวจพบการสแกน QR Code กำลังเชื่อมต่อบัญชีอัตโนมัติ'}
+                      {loginStatus === 'auto_redirecting' && 'ระบบพบ QR Code กิจกรรม กำลังพาคุณไปเข้าสู่ระบบอัตโนมัติ'}
                       {loginStatus === 'success' && 'ยินดีต้อนรับกลับเข้าสู่ระบบ'}
                       {loginStatus === 'redirecting' && 'เตรียมพร้อมจัดการข้อมูลการแข่งขัน'}
                   </p>
                   
                   {loginStatus === 'auto_redirecting' && (
-                      <button 
-                          onClick={() => handleLineLogin()}
-                          className="text-xs text-gray-400 underline hover:text-[#06C755]"
-                      >
-                          หากหน้านี้ค้าง คลิกที่นี่
-                      </button>
+                      <div className="flex flex-col gap-2">
+                          <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
+                              <div className="h-full bg-[#06C755] animate-[loading_1.5s_ease-in-out_infinite] w-full origin-left"></div>
+                          </div>
+                          <button 
+                              onClick={() => handleLineLogin()}
+                              className="text-xs text-gray-400 underline hover:text-[#06C755] mt-2"
+                          >
+                              หากหน้านี้ค้างเกิน 5 วินาที คลิกที่นี่
+                          </button>
+                      </div>
                   )}
+                  <style>{`
+                    @keyframes loading {
+                        0% { transform: scaleX(0); }
+                        50% { transform: scaleX(0.5); }
+                        100% { transform: scaleX(1); opacity: 0; }
+                    }
+                  `}</style>
               </div>
           </div>
       );

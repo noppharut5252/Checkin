@@ -67,11 +67,10 @@ export const generatePosterHTML = async (
             mainName = "UprightSchool Check-in";
             badgeText = "📱 สแกนด้วย LINE";
         } else {
-            // Activity Check-in Mode: LIFF Deep Link using Query Param '?target='
-            // This is more robust against hash-stripping during redirects
-            // Example: https://liff.line.me/<ID>?target=/checkin/<ACT_ID>
-            const targetPath = encodeURIComponent(`/checkin/${act.ActivityID}`);
-            url = `${LIFF_URL}?target=${targetPath}`;
+            // Activity Check-in Mode: LIFF Deep Link
+            // Construct URL: https://liff.line.me/<ID>/#/checkin/<ACT_ID>
+            // This ensures opening inside LINE context -> App.tsx handles routing
+            url = `${LIFF_URL}/#/checkin/${act.ActivityID}`;
             
             headerTitle = "Check-In Point";
             headerSub = "จุดลงทะเบียนเข้าร่วมกิจกรรม";

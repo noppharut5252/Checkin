@@ -71,7 +71,14 @@ const App: React.FC = () => {
 
           // 1. Capture Hash immediately (before Router renders)
           const currentHash = window.location.hash;
-          if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login')) {
+          // IMPORTANT: Do not overwrite pending redirect if we are just on the profile or login page directly
+          // This ensures if a user refreshes during registration, they don't lose the target activity
+          if (currentHash && 
+              currentHash !== '#/' && 
+              currentHash !== '#/home' && 
+              !currentHash.startsWith('#/login') &&
+              !currentHash.startsWith('#/profile')
+          ) {
               // Decode URI to handle encoded characters in QR codes
               try {
                   const path = decodeURIComponent(currentHash.substring(1));
@@ -195,9 +202,10 @@ const App: React.FC = () => {
       localStorage.setItem('comp_user', JSON.stringify(updatedUser));
       
       if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
-          console.log("Registration complete.");
+          console.log("Registration complete. Checking pending redirects...");
           setIsRegistering(false);
-          performRedirect();
+          // Ensure redirection happens after state updates
+          setTimeout(performRedirect, 100);
       }
   };
 

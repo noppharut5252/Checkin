@@ -86,12 +86,14 @@ const App: React.FC = () => {
       } catch (e) {}
   };
 
-  // Helper to check if user info is complete
+  // Helper to check if user info is complete (Includes LineID Check)
   const isUserComplete = (u: User) => {
-      const hasLineID = u.LineID || u.userline_id;
+      const hasLineID = !!(u.LineID || u.userline_id);
       const isAdmin = u.Role === 'admin' || u.level === 'admin';
+      
       // Enforce LineID for non-admin users
       if (!isAdmin && !hasLineID) return false;
+      
       // Enforce Name and SchoolID for everyone
       return !!(u.Name && u.SchoolID);
   };
@@ -129,16 +131,16 @@ const App: React.FC = () => {
                       try {
                           const u = JSON.parse(savedUserStr);
                           
-                          // Check completeness (Name, School, and now LineID)
+                          // Check completeness (Name, School, and LineID)
                           if (!isUserComplete(u)) {
                               setUser(u);
-                              setIsRegistering(true);
+                              setIsRegistering(true); // Force registration mode
                               return true;
                           }
                           
                           setUser(u);
                           
-                          // Background Validation (Optimistic UI - don't wait for this)
+                          // Background Validation (Optimistic UI)
                           if (u.LineID || u.userline_id) {
                               checkUserRegistration(u.LineID || u.userline_id).then(dbUser => {
                                   if (!dbUser) {
@@ -164,8 +166,14 @@ const App: React.FC = () => {
                       if (profile) {
                           const dbUser = await checkUserRegistration(profile.userId);
                           if (dbUser) {
-                              setUser(dbUser);
-                              localStorage.setItem('comp_user', JSON.stringify(dbUser));
+                              // Existing User
+                              if (!isUserComplete(dbUser)) {
+                                  setUser(dbUser);
+                                  setIsRegistering(true);
+                              } else {
+                                  setUser(dbUser);
+                                  localStorage.setItem('comp_user', JSON.stringify(dbUser));
+                              }
                               return true;
                           } else {
                               // New User Registration Flow
@@ -180,7 +188,7 @@ const App: React.FC = () => {
                                    Prefix: ''
                               };
                               setUser(partialUser);
-                              setIsRegistering(true);
+                              setIsRegistering(true); // Force registration
                           }
                       }
                   } catch (e) {
@@ -196,10 +204,15 @@ const App: React.FC = () => {
               // 3. Finalize Navigation Logic
               const savedRedirect = getPendingRedirect();
               
+              // ONLY redirect immediately if authenticated AND complete
+              // If not complete, we let the UI stay on 'isRegistering' (Profile)
+              // The redirect will happen later in 'handleUpdateUser'
               if (savedRedirect) {
-                  setInitialRedirect(savedRedirect);
-              } else if (!authSuccess) {
-                  // If not logged in and no deep link, usually goes to Login or Home (handled by Router)
+                  if (authSuccess && user && isUserComplete(user)) {
+                      setInitialRedirect(savedRedirect);
+                  } else {
+                      console.log("Pending redirect saved, waiting for registration/login completion...");
+                  }
               }
               
               setLoading(false);
@@ -216,21 +229,22 @@ const App: React.FC = () => {
 
   const handleLogin = (u: User) => {
       setUser(u);
-      
-      // Check if profile is complete upon login
-      if (isUserComplete(u)) {
-          setIsRegistering(false);
-      } else {
-          setIsRegistering(true);
-      }
-      
       localStorage.setItem('comp_user', JSON.stringify(u));
       
       const redirect = getPendingRedirect();
-      if (redirect) {
-          setInitialRedirect(redirect);
+
+      // Check if profile is complete upon login
+      if (isUserComplete(u)) {
+          setIsRegistering(false);
+          // If complete, allow redirect
+          if (redirect) {
+              setInitialRedirect(redirect);
+          } else {
+              setInitialRedirect('/home');
+          }
       } else {
-          setInitialRedirect('/home');
+          // If incomplete, force registration (keep redirect pending)
+          setIsRegistering(true);
       }
   };
 
@@ -241,9 +255,11 @@ const App: React.FC = () => {
       // Check completeness to exit registration mode
       if (isRegistering && isUserComplete(updatedUser)) {
           setIsRegistering(false);
-          // Check pending redirect after registration
+          
+          // Check pending redirect AFTER registration is complete
           const redirect = getPendingRedirect();
           if (redirect) {
+              console.log("Registration complete, redirecting to pending:", redirect);
               setInitialRedirect(redirect);
           } else {
               setInitialRedirect('/home');

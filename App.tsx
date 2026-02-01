@@ -71,8 +71,9 @@ const App: React.FC = () => {
 
           // 1. Capture Hash immediately (before Router renders)
           const currentHash = window.location.hash;
-          if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login') && !currentHash.startsWith('#/profile')) {
-              const path = currentHash.substring(1);
+          if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login')) {
+              // Decode URI to handle encoded characters in QR codes
+              const path = decodeURIComponent(currentHash.substring(1));
               console.log("Deep link detected:", path);
               setPendingRedirect(path);
           }
@@ -159,7 +160,7 @@ const App: React.FC = () => {
 
               // Perform redirect logic immediately after loading state clears
               if (authSuccess) {
-                  setTimeout(performRedirect, 50); 
+                  setTimeout(performRedirect, 100); 
               }
 
           } catch (err: any) {
@@ -175,7 +176,15 @@ const App: React.FC = () => {
       setUser(u);
       setIsRegistering(false);
       localStorage.setItem('comp_user', JSON.stringify(u));
-      performRedirect();
+      
+      // Check if we have a pending redirect first
+      const redirect = getPendingRedirect();
+      if (redirect) {
+          performRedirect();
+      } else {
+          // Default to home if no redirect
+          window.location.hash = '/home';
+      }
   };
 
   const handleUpdateUser = (updatedUser: User) => {
@@ -301,11 +310,11 @@ const App: React.FC = () => {
                 </Layout>
             } />
 
-            {/* Check-in route protected */}
+            {/* Check-in route protected: Redirect to Login if no user */}
             <Route path="/checkin/:activityId" element={
                 user && !isRegistering ? (
                     <CheckInView data={data} user={user} />
-                ) : <Navigate to="/profile" replace />
+                ) : <Navigate to="/login" replace />
             } />
 
             <Route path="/profile" element={

@@ -71,24 +71,61 @@ const App: React.FC = () => {
       loadData();
       
       const initializeAuth = async () => {
-          // Check local storage first
-          const savedUser = localStorage.getItem('comp_user');
-          if (savedUser) {
-              setUser(JSON.parse(savedUser));
+          // 1. ALWAYS Capture current hash path first (The destination from QR)
+          // If user scans a new QR, we must respect this new path immediately.
+          const currentHash = window.location.hash;
+          if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login') && !currentHash.startsWith('#/profile')) {
+              // Always overwrite pending redirect if a specific path is requested
+              // This fixes the issue where user aborts, then scans again
+              const path = currentHash.substring(1);
+              console.log("New scan detected, saving redirect:", path);
+              setPendingRedirect(path);
+          }
+
+          // 2. Check local storage
+          const savedUserStr = localStorage.getItem('comp_user');
+          if (savedUserStr) {
+              const u = JSON.parse(savedUserStr);
+              
+              // CRITICAL FIX: Check if local user is actually complete
+              // If they aborted registration previously, they might have a user object but no Name/School
+              if (!u.Name || !u.SchoolID) {
+                  console.warn("Incomplete user found locally. Forcing registration.");
+                  setUser(u);
+                  setIsRegistering(true); // Force back to registration
+                  return; // Stop here, wait for registration to finish
+              }
+
+              setUser(u);
+              
+              // Validate Session against DB
+              const lineId = u.LineID || u.userline_id;
+              if (lineId) {
+                  checkUserRegistration(lineId).then(dbUser => {
+                      if (!dbUser) {
+                          console.warn("User not found in DB (deleted?), forcing registration");
+                          // Use partial data but force register
+                          setUser({ ...u, Role: 'user' }); 
+                          setIsRegistering(true);
+                          localStorage.removeItem('comp_user'); 
+                      } else {
+                          // Sync latest data
+                          if (JSON.stringify(u) !== JSON.stringify(dbUser)) {
+                              setUser(dbUser);
+                              localStorage.setItem('comp_user', JSON.stringify(dbUser));
+                          }
+                          // If we are confirmed valid, check pending redirect
+                          checkAndRedirect();
+                      }
+                  }).catch(e => console.warn("Auth check failed", e));
+              } else {
+                  // Admin or non-line user, assume valid locally for now
+                  checkAndRedirect();
+              }
               return;
           }
 
-          // Capture current hash path before LIFF init/redirect logic
-          // This handles cases where user clicks a Flex Message link like .../#/checkin/ACT-001
-          const currentHash = window.location.hash;
-          if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login')) {
-              // Store path without the '#' if not already set (preserve earliest intent)
-              if (!getPendingRedirect()) {
-                  setPendingRedirect(currentHash.substring(1));
-              }
-          }
-
-          // Try LIFF Init
+          // 3. Try LIFF Init (If no local user)
           try {
               const profile = await initLiff();
               if (profile) {
@@ -100,13 +137,14 @@ const App: React.FC = () => {
                       handleLogin(dbUser);
                   } else {
                       // New User -> Setup temp user & Redirect to Register
+                      console.log("New user detected, sending to registration");
                       const partialUser: any = { 
                            UserID: 'LIFF-' + profile.userId, 
-                           username: profile.displayName, // Store Line Name in Username
+                           username: profile.displayName, 
                            LineID: profile.userId, 
                            PictureUrl: profile.pictureUrl,
                            Role: 'user',
-                           Name: '', // Formal name empty
+                           Name: '', 
                            Surname: '',
                            Prefix: ''
                       };
@@ -122,21 +160,20 @@ const App: React.FC = () => {
       initializeAuth();
   }, []);
 
+  const checkAndRedirect = () => {
+      const redirect = getPendingRedirect();
+      if (redirect) {
+          console.log("Executing pending redirect:", redirect);
+          setPendingRedirect(null);
+          setTimeout(() => window.location.hash = redirect, 100);
+      }
+  };
+
   const handleLogin = (u: User) => {
       setUser(u);
       setIsRegistering(false);
       localStorage.setItem('comp_user', JSON.stringify(u));
-      
-      // Check for pending redirect
-      const redirect = getPendingRedirect();
-      if (redirect) {
-          // Clear it
-          setPendingRedirect(null);
-          // Allow UI to update then redirect
-          setTimeout(() => {
-              window.location.hash = redirect;
-          }, 100);
-      }
+      checkAndRedirect();
   };
 
   const handleUpdateUser = (updatedUser: User) => {
@@ -144,14 +181,11 @@ const App: React.FC = () => {
       localStorage.setItem('comp_user', JSON.stringify(updatedUser));
       
       // If we were registering, this completes it
+      // Critical: Ensure we actually have the required fields now
       if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
+          console.log("Registration completed successfully.");
           setIsRegistering(false);
-          
-          const redirect = getPendingRedirect();
-          if (redirect) {
-              setPendingRedirect(null);
-              window.location.hash = redirect;
-          }
+          checkAndRedirect();
       }
   };
 
@@ -200,7 +234,7 @@ const App: React.FC = () => {
         <Routes>
             <Route path="/" element={<Navigate to={isRegistering ? "/profile" : "/home"} replace />} />
 
-            {/* Force profile for registration */}
+            {/* Force profile for registration (Catch ALL if registering) */}
             {isRegistering && (
                 <Route path="*" element={
                     <Layout userProfile={user} data={data}>
@@ -217,7 +251,7 @@ const App: React.FC = () => {
 
             <Route path="/checkin-dashboard" element={
                 <Layout userProfile={user} data={data}>
-                    {user ? (
+                    {user && !isRegistering ? (
                         user.Role === 'admin' ? 
                         <AdminCheckInManager data={data} user={user} onDataUpdate={loadData} /> : 
                         <UserCheckInDashboard data={data} user={user} />
@@ -227,7 +261,7 @@ const App: React.FC = () => {
             
             <Route path="/passport" element={
                 <Layout userProfile={user} data={data}>
-                    {user ? <PassportView data={data} user={user} /> : <Navigate to="/login" replace />}
+                    {user && !isRegistering ? <PassportView data={data} user={user} /> : <Navigate to="/login" replace />}
                 </Layout>
             } />
 
@@ -267,10 +301,11 @@ const App: React.FC = () => {
                 </Layout>
             } />
 
+            {/* Check-in route protected: Must exist and NOT be registering */}
             <Route path="/checkin/:activityId" element={
-                user ? (
+                user && !isRegistering ? (
                     <CheckInView data={data} user={user} />
-                ) : <Navigate to="/login" replace />
+                ) : <Navigate to="/profile" replace />
             } />
 
             <Route path="/profile" element={

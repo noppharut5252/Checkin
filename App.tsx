@@ -86,17 +86,24 @@ const App: React.FC = () => {
       } catch (e) {}
   };
 
+  // Helper to check if user info is complete
+  const isUserComplete = (u: User) => {
+      const hasLineID = u.LineID || u.userline_id;
+      const isAdmin = u.Role === 'admin' || u.level === 'admin';
+      // Enforce LineID for non-admin users
+      if (!isAdmin && !hasLineID) return false;
+      // Enforce Name and SchoolID for everyone
+      return !!(u.Name && u.SchoolID);
+  };
+
   useEffect(() => {
       const initApp = async () => {
           setLoading(true);
           setError(null);
 
           // 1. Aggressive Hash Capture (Critical for QR Scans)
-          // We grab the hash immediately before any async operation
           const currentHash = window.location.hash;
           
-          // Check if it is a deep link (e.g., #/checkin/ACT001)
-          // We ignore root (#/), home (#/home), login, and profile to allow normal flow
           if (currentHash && 
               currentHash !== '#/' && 
               currentHash !== '#/home' && 
@@ -121,7 +128,9 @@ const App: React.FC = () => {
                   if (savedUserStr) {
                       try {
                           const u = JSON.parse(savedUserStr);
-                          if (!u.Name || !u.SchoolID) {
+                          
+                          // Check completeness (Name, School, and now LineID)
+                          if (!isUserComplete(u)) {
                               setUser(u);
                               setIsRegistering(true);
                               return true;
@@ -185,12 +194,9 @@ const App: React.FC = () => {
               if (dataRes) setData(dataRes);
               
               // 3. Finalize Navigation Logic
-              // Check session storage one last time (it might have been set by the aggressive capture above)
               const savedRedirect = getPendingRedirect();
               
               if (savedRedirect) {
-                  // If we have a pending redirect (from QR scan), we MUST prioritize it
-                  // We do NOT clear it here. We pass it to RedirectHandler to clear after navigation.
                   setInitialRedirect(savedRedirect);
               } else if (!authSuccess) {
                   // If not logged in and no deep link, usually goes to Login or Home (handled by Router)
@@ -210,7 +216,14 @@ const App: React.FC = () => {
 
   const handleLogin = (u: User) => {
       setUser(u);
-      setIsRegistering(false);
+      
+      // Check if profile is complete upon login
+      if (isUserComplete(u)) {
+          setIsRegistering(false);
+      } else {
+          setIsRegistering(true);
+      }
+      
       localStorage.setItem('comp_user', JSON.stringify(u));
       
       const redirect = getPendingRedirect();
@@ -225,7 +238,8 @@ const App: React.FC = () => {
       setUser(updatedUser);
       localStorage.setItem('comp_user', JSON.stringify(updatedUser));
       
-      if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
+      // Check completeness to exit registration mode
+      if (isRegistering && isUserComplete(updatedUser)) {
           setIsRegistering(false);
           // Check pending redirect after registration
           const redirect = getPendingRedirect();

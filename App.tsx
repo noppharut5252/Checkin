@@ -73,9 +73,14 @@ const App: React.FC = () => {
           const currentHash = window.location.hash;
           if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login')) {
               // Decode URI to handle encoded characters in QR codes
-              const path = decodeURIComponent(currentHash.substring(1));
-              console.log("Deep link detected:", path);
-              setPendingRedirect(path);
+              try {
+                  const path = decodeURIComponent(currentHash.substring(1));
+                  console.log("Deep link detected:", path);
+                  setPendingRedirect(path);
+              } catch (e) {
+                  // Fallback if decode fails
+                  setPendingRedirect(currentHash.substring(1));
+              }
           }
 
           try {
@@ -177,12 +182,10 @@ const App: React.FC = () => {
       setIsRegistering(false);
       localStorage.setItem('comp_user', JSON.stringify(u));
       
-      // Check if we have a pending redirect first
       const redirect = getPendingRedirect();
       if (redirect) {
           performRedirect();
       } else {
-          // Default to home if no redirect
           window.location.hash = '/home';
       }
   };

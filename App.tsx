@@ -53,17 +53,6 @@ const App: React.FC = () => {
       else sessionStorage.removeItem('pendingRedirect');
   };
 
-  // Helper to force hash update
-  const performRedirect = () => {
-      const redirect = getPendingRedirect();
-      if (redirect) {
-          console.log("Executing pending redirect:", redirect);
-          setPendingRedirect(null);
-          // Small delay to ensure Router is ready
-          setTimeout(() => window.location.hash = redirect, 100);
-      }
-  };
-
   useEffect(() => {
       const initApp = async () => {
           setLoading(true);
@@ -76,19 +65,16 @@ const App: React.FC = () => {
           
           if (targetParam) {
               const decodedTarget = decodeURIComponent(targetParam);
-              console.log("Deep link via Query Param:", decodedTarget);
+              // Save to session immediately
               setPendingRedirect(decodedTarget);
-              // Clean up URL if possible to avoid state pollution, but tricky in React strict mode
           } else {
               const currentHash = window.location.hash;
               if (currentHash && currentHash !== '#/' && currentHash !== '#/home' && !currentHash.startsWith('#/login')) {
-                  // Decode URI to handle encoded characters in QR codes
+                  // Legacy Hash Handling
                   try {
                       const path = decodeURIComponent(currentHash.substring(1));
-                      console.log("Deep link via Hash:", path);
                       setPendingRedirect(path);
                   } catch (e) {
-                      // Fallback if decode fails
                       setPendingRedirect(currentHash.substring(1));
                   }
               }
@@ -111,7 +97,7 @@ const App: React.FC = () => {
                       if (!u.Name || !u.SchoolID) {
                           setUser(u);
                           setIsRegistering(true);
-                          return;
+                          return false; // Not fully auth
                       }
                       
                       setUser(u);
@@ -130,8 +116,6 @@ const App: React.FC = () => {
                               }
                           }).catch(e => console.warn("Background Auth Check Failed", e));
                       }
-                      
-                      // CRITICAL: Trigger redirect check after restoring session
                       return true; // Signal success
                   }
 
@@ -143,7 +127,6 @@ const App: React.FC = () => {
                           if (dbUser) {
                               setUser(dbUser);
                               localStorage.setItem('comp_user', JSON.stringify(dbUser));
-                              // CRITICAL: Trigger redirect check after LIFF login
                               return true;
                           } else {
                               // New User
@@ -171,13 +154,19 @@ const App: React.FC = () => {
               const [dataRes, authSuccess] = await Promise.all([dataPromise, authPromise]);
               if (dataRes) setData(dataRes);
               
+              // CRITICAL FIX: Apply redirect BEFORE unmounting loader
+              // This ensures HashRouter sees the correct URL immediately upon mount
+              if (authSuccess) {
+                  const pending = getPendingRedirect();
+                  if (pending) {
+                      console.log("Applying deep link before router mount:", pending);
+                      window.location.hash = pending;
+                      setPendingRedirect(null); // Consume it
+                  }
+              }
+              
               // Only stop loading after everything is done
               setLoading(false);
-
-              // Perform redirect logic immediately after loading state clears
-              if (authSuccess) {
-                  setTimeout(performRedirect, 100); 
-              }
 
           } catch (err: any) {
               setError(err.message || "เกิดข้อผิดพลาดในการโหลด");
@@ -195,7 +184,8 @@ const App: React.FC = () => {
       
       const redirect = getPendingRedirect();
       if (redirect) {
-          performRedirect();
+          setPendingRedirect(null);
+          window.location.hash = redirect;
       } else {
           window.location.hash = '/home';
       }
@@ -208,7 +198,14 @@ const App: React.FC = () => {
       if (isRegistering && updatedUser.Name && updatedUser.SchoolID) {
           console.log("Registration complete.");
           setIsRegistering(false);
-          performRedirect();
+          
+          const redirect = getPendingRedirect();
+          if (redirect) {
+              setPendingRedirect(null);
+              window.location.hash = redirect;
+          } else {
+              window.location.hash = '/home';
+          }
       }
   };
 

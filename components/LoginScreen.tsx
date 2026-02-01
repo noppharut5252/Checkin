@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { User } from '../types';
 import { loginStandardUser } from '../services/api';
 import { loginLiff } from '../services/liff';
-import { User as UserIcon, Lock, Loader2, CheckCircle, AlertCircle, LogIn, ExternalLink } from 'lucide-react';
+import { User as UserIcon, Lock, Loader2, CheckCircle, AlertCircle, LogIn, ExternalLink, ArrowRight, MapPin, UserPlus } from 'lucide-react';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: User) => void;
@@ -16,10 +16,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const APP_VERSION = 'v1.0.1'; 
+  const APP_VERSION = 'v1.0.2'; 
   
   // Login State Machine
   const [loginStatus, setLoginStatus] = useState<'idle' | 'verifying' | 'success' | 'redirecting' | 'auto_redirecting'>('idle');
+  // Detailed Status Message
+  const [statusStep, setStatusStep] = useState<string>('เตรียมความพร้อม...');
+  const [targetPath, setTargetPath] = useState<string | null>(null);
 
   // --- Auto-Login Logic for Standard Camera Scans ---
   useEffect(() => {
@@ -27,6 +30,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           // Check if there is a pending redirect (meaning user scanned a QR code)
           const pendingRedirect = sessionStorage.getItem('pendingRedirect');
           
+          if (pendingRedirect) {
+              setTargetPath(pendingRedirect);
+          }
+
           // Conditions to trigger auto-login:
           // 1. Pending Redirect exists (scanned QR)
           // 2. Not a generic home/profile redirect
@@ -40,13 +47,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           ) {
               console.log("Deep link detected, attempting auto LINE login...");
               setLoginStatus('auto_redirecting');
+              setStatusStep(`พบลิงก์กิจกรรม: ${pendingRedirect.split('?')[0]}`);
               
               // Set flag to prevent loop if user hits "Back" from LINE
               sessionStorage.setItem('autoLoginAttempted', 'true');
 
               // Delay slightly to let UI render, then redirect
               setTimeout(() => {
-                  handleLineLogin();
+                  setStatusStep('กำลังเชื่อมต่อ LINE Login...');
+                  setTimeout(() => {
+                      handleLineLogin();
+                  }, 800);
               }, 1200);
           }
       };
@@ -65,26 +76,46 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     e.preventDefault();
     setLoginError('');
     setLoginStatus('verifying');
+    setStatusStep('กำลังตรวจสอบชื่อผู้ใช้และรหัสผ่าน...');
     
     try {
         // Step 1: Verify
         const user = await loginStandardUser(username, password);
         
         if (user) {
-            // Step 2: Success UI
+            // Step 2: Check Profile & Target
+            const isComplete = !!(user.Name && user.SchoolID);
+            const pending = sessionStorage.getItem('pendingRedirect');
+            
+            setStatusStep('เข้าสู่ระบบสำเร็จ! ตรวจสอบข้อมูลผู้ใช้...');
             setLoginStatus('success');
             
-            // Step 3: Redirect logic - Delegate to parent
+            // Step 3: Determine Destination & Update UI
             setTimeout(() => {
+                if (!isComplete) {
+                    setStatusStep('ข้อมูลไม่ครบถ้วน... กำลังพาไปหน้าลงทะเบียน');
+                } else if (pending) {
+                    setStatusStep('ข้อมูลครบถ้วน... กำลังพาไปหน้าเช็คอินกิจกรรม');
+                } else {
+                    setStatusStep('กำลังพาไปหน้า Dashboard...');
+                }
+                
                 setLoginStatus('redirecting');
-                onLoginSuccess(user);
+                
+                // Step 4: Execute Redirect (Delegate to parent)
+                setTimeout(() => {
+                    onLoginSuccess(user);
+                }, 1500); // Give user time to read status
             }, 800);
+
         } else {
             setLoginStatus('idle');
+            setStatusStep('');
             setLoginError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
         }
     } catch (err) {
         setLoginStatus('idle');
+        setStatusStep('');
         setLoginError('เกิดข้อผิดพลาดในการเชื่อมต่อ');
     }
   };
@@ -107,18 +138,25 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   </div>
 
                   <h3 className="text-xl font-bold text-[#00247D] mb-2">
-                      {loginStatus === 'verifying' && 'กำลังตรวจสอบข้อมูล...'}
-                      {loginStatus === 'auto_redirecting' && 'กำลังเชื่อมต่อ LINE...'}
-                      {loginStatus === 'success' && 'เข้าสู่ระบบสำเร็จ!'}
-                      {loginStatus === 'redirecting' && 'กำลังเข้าสู่ Dashboard...'}
+                      {loginStatus === 'verifying' && 'กำลังตรวจสอบ...'}
+                      {loginStatus === 'auto_redirecting' && 'กำลังดำเนินการ...'}
+                      {loginStatus === 'success' && 'ยืนยันตัวตนสำเร็จ'}
+                      {loginStatus === 'redirecting' && 'กำลังย้ายหน้า...'}
                   </h3>
                   
-                  <p className="text-gray-500 text-sm mb-6">
-                      {loginStatus === 'verifying' && 'กรุณารอสักครู่ ระบบกำลังยืนยันตัวตน'}
-                      {loginStatus === 'auto_redirecting' && 'ระบบพบ QR Code กิจกรรม กำลังพาคุณไปเข้าสู่ระบบอัตโนมัติ'}
-                      {loginStatus === 'success' && 'ยินดีต้อนรับกลับเข้าสู่ระบบ'}
-                      {loginStatus === 'redirecting' && 'เตรียมพร้อมจัดการข้อมูลการแข่งขัน'}
-                  </p>
+                  <div className="bg-slate-50 rounded-xl p-3 mb-6 border border-slate-100 min-h-[60px] flex items-center justify-center">
+                      <p className="text-gray-600 text-sm font-medium animate-pulse">
+                          {statusStep}
+                      </p>
+                  </div>
+                  
+                  {/* Visual Indicator for Target */}
+                  {targetPath && (
+                      <div className="flex items-center justify-center gap-2 text-xs text-gray-400 mb-4">
+                          <MapPin className="w-3 h-3" />
+                          <span>ปลายทาง: {targetPath.length > 20 ? targetPath.substring(0, 20) + '...' : targetPath}</span>
+                      </div>
+                  )}
                   
                   {loginStatus === 'auto_redirecting' && (
                       <div className="flex flex-col gap-2">
@@ -180,6 +218,19 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             </div>
 
             <div className="p-8">
+                {targetPath && (
+                    <div className="mb-6 bg-blue-50 border border-blue-100 p-3 rounded-xl flex items-start gap-3">
+                        <div className="bg-blue-100 p-2 rounded-full text-blue-600 shrink-0">
+                            <MapPin className="w-4 h-4" />
+                        </div>
+                        <div>
+                            <h4 className="text-xs font-bold text-blue-800 uppercase">ตรวจพบลิงก์กิจกรรม</h4>
+                            <p className="text-xs text-blue-600 mt-0.5 line-clamp-1">{targetPath}</p>
+                            <div className="mt-1 text-[10px] text-blue-400">กรุณาเข้าสู่ระบบเพื่อดำเนินการต่อ</div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
                     <button 
                         className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${loginMethod === 'line' ? 'bg-white text-[#06C755] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}

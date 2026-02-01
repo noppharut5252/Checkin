@@ -37,15 +37,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             // Step 2: Success UI
             setLoginStatus('success');
             
-            // Step 3: Redirect logic
+            // Step 3: Redirect logic - Delegate to parent
             setTimeout(() => {
                 setLoginStatus('redirecting');
                 onLoginSuccess(user);
-                
-                // Force navigation to Dashboard
-                setTimeout(() => {
-                    navigate('/home', { replace: true });
-                }, 500);
             }, 800);
         } else {
             setLoginStatus('idle');

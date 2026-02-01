@@ -16,6 +16,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const APP_VERSION = 'v1.0.1'; // Updated version
   
   // Login State Machine
   const [loginStatus, setLoginStatus] = useState<'idle' | 'verifying' | 'success' | 'redirecting' | 'auto_redirecting'>('idle');
@@ -244,6 +245,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     <button onClick={() => { navigate('/home'); }} className="text-xs text-gray-400 hover:text-[#00247D] hover:underline transition-colors">
                         เข้าใช้งานแบบบุคคลทั่วไป (Guest Mode)
                     </button>
+                    <div className="text-[10px] text-gray-300 mt-4">{APP_VERSION}</div>
                 </div>
             </div>
             

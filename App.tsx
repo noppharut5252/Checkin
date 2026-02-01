@@ -332,7 +332,9 @@ const App: React.FC = () => {
             <Route path="/share-result" element={<PublicResultView data={data} />} />
             <Route path="/summary" element={<Layout userProfile={user} data={data}><SummaryGenerator data={data} user={user} /></Layout>} />
 
-            <Route path="/login" element={<LoginScreen onLoginSuccess={handleLogin} />} />
+            <Route path="/login" element={
+                isRegistering ? <Navigate to="/profile" replace /> : <LoginScreen onLoginSuccess={handleLogin} />
+            } />
             
             {/* Catch all - redirect based on auth */}
             <Route path="*" element={<Navigate to={isRegistering ? "/profile" : "/home"} replace />} />

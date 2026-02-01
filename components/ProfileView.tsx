@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, AppData } from '../types';
-import { User as UserIcon, Save, School, Shield, Mail, Phone, Loader2, Link as LinkIcon, CheckCircle, AlertCircle, LogIn, LayoutGrid, Share, MoreVertical, PlusSquare, Smartphone, Check } from 'lucide-react';
+import { User as UserIcon, Save, School, Shield, Mail, Phone, Loader2, Link as LinkIcon, CheckCircle, AlertCircle, LogIn, LayoutGrid, Share, MoreVertical, PlusSquare, Smartphone, Check, Globe, Copy, ExternalLink } from 'lucide-react';
 import { linkLineAccount, registerUser, updateUser } from '../services/api';
 import { initLiff, loginLiff } from '../services/liff';
 import SearchableSelect from './SearchableSelect';
@@ -21,93 +21,156 @@ const PDPA_TEXT = `
 `;
 
 const InstallGuideModal = ({ isOpen, onClose, platform }: { isOpen: boolean, onClose: () => void, platform: 'ios' | 'android' | 'desktop' }) => {
+    // Check if running in LINE Browser
+    const isLineBrowser = /Line/i.test(navigator.userAgent);
+    
+    // Initial step: If LINE -> 'switch_browser', Else -> 'install_guide'
+    const [step, setStep] = useState<'switch_browser' | 'install_guide'>(isLineBrowser ? 'switch_browser' : 'install_guide');
     const [activeTab, setActiveTab] = useState<'ios' | 'android'>(platform === 'ios' ? 'ios' : 'android');
+    const [copyStatus, setCopyStatus] = useState('');
 
     if (!isOpen) return null;
+
+    const handleOpenExternal = () => {
+        const url = window.location.href;
+        try {
+            // Attempt to use LIFF to open external browser
+            // @ts-ignore
+            if (typeof liff !== 'undefined') {
+                // @ts-ignore
+                liff.openWindow({ url: url, external: true });
+            } else {
+                window.open(url, '_blank');
+            }
+        } catch (e) {
+            window.open(url, '_blank');
+        }
+    };
+
+    const handleCopyLink = () => {
+        navigator.clipboard.writeText(window.location.href);
+        setCopyStatus('คัดลอกแล้ว!');
+        setTimeout(() => setCopyStatus(''), 2000);
+    };
 
     return (
         <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300">
             <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]">
                 
                 {/* Header */}
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-center text-white shrink-0">
+                <div className={`p-6 text-center text-white shrink-0 ${step === 'switch_browser' ? 'bg-gradient-to-r from-orange-500 to-red-600' : 'bg-gradient-to-r from-blue-600 to-indigo-700'}`}>
                     <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-md border-2 border-white/30">
-                        <Check className="w-8 h-8 text-white" />
+                        {step === 'switch_browser' ? <Globe className="w-8 h-8 text-white" /> : <Check className="w-8 h-8 text-white" />}
                     </div>
-                    <h3 className="text-xl font-bold">ลงทะเบียนสำเร็จ!</h3>
-                    <p className="text-blue-100 text-sm mt-1">เพื่อความสะดวก กรุณาเพิ่มแอปไว้ที่หน้าจอหลัก</p>
+                    <h3 className="text-xl font-bold">{step === 'switch_browser' ? 'เปิดในเบราว์เซอร์หลัก' : 'ลงทะเบียนสำเร็จ!'}</h3>
+                    <p className="text-white/90 text-sm mt-1">
+                        {step === 'switch_browser' ? 'เพื่อติดตั้งแอปและใช้งานเต็มรูปแบบ' : 'เพื่อความสะดวก กรุณาเพิ่มแอปไว้ที่หน้าจอหลัก'}
+                    </p>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex border-b border-gray-100 shrink-0">
-                    <button 
-                        onClick={() => setActiveTab('ios')}
-                        className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'ios' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-500 hover:bg-gray-50'}`}
-                    >
-                        <span className="text-lg">🍎</span> iOS (iPhone)
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('android')}
-                        className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'android' ? 'text-green-600 border-b-2 border-green-600 bg-green-50' : 'text-gray-500 hover:bg-gray-50'}`}
-                    >
-                        <span className="text-lg">🤖</span> Android
-                    </button>
-                </div>
+                {step === 'switch_browser' ? (
+                    <div className="p-6 flex-1 bg-gray-50 flex flex-col items-center justify-center text-center space-y-4">
+                        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm w-full">
+                            <p className="text-gray-600 text-sm mb-4">
+                                ขณะนี้คุณใช้งานผ่าน <strong>LINE Browser</strong> ซึ่งมีข้อจำกัดในการติดตั้งแอป<br/>กรุณากดปุ่มด้านล่างเพื่อเปิดใน <strong>Chrome</strong> หรือ <strong>Safari</strong>
+                            </p>
+                            
+                            <button 
+                                onClick={handleOpenExternal}
+                                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md flex items-center justify-center gap-2 mb-3 active:scale-95 transition-all"
+                            >
+                                <ExternalLink className="w-5 h-5" /> เปิดใน Chrome / Safari
+                            </button>
 
-                {/* Content */}
-                <div className="p-6 overflow-y-auto flex-1 bg-gray-50">
-                    {activeTab === 'ios' ? (
-                        <div className="space-y-4">
-                            <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
-                                <div className="bg-gray-100 p-2 rounded-lg shrink-0"><Share className="w-6 h-6 text-blue-500" /></div>
-                                <div>
-                                    <h4 className="font-bold text-gray-800 text-sm">1. กดปุ่มแชร์ (Share)</h4>
-                                    <p className="text-xs text-gray-500">ที่แถบเมนูด้านล่างของ Safari</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center justify-center">
-                                <div className="h-8 w-0.5 bg-gray-300"></div>
-                            </div>
-                            <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
-                                <div className="bg-gray-100 p-2 rounded-lg shrink-0"><PlusSquare className="w-6 h-6 text-gray-600" /></div>
-                                <div>
-                                    <h4 className="font-bold text-gray-800 text-sm">2. เพิ่มไปยังหน้าจอโฮม</h4>
-                                    <p className="text-xs text-gray-500">เลื่อนหาเมนู "Add to Home Screen"</p>
-                                </div>
-                            </div>
+                            <button 
+                                onClick={handleCopyLink}
+                                className="w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-gray-50 active:scale-95 transition-all"
+                            >
+                                <Copy className="w-5 h-5" /> {copyStatus || 'คัดลอกลิงก์'}
+                            </button>
                         </div>
-                    ) : (
-                        <div className="space-y-4">
-                            <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
-                                <div className="bg-gray-100 p-2 rounded-lg shrink-0"><MoreVertical className="w-6 h-6 text-gray-600" /></div>
-                                <div>
-                                    <h4 className="font-bold text-gray-800 text-sm">1. กดเมนู 3 จุด</h4>
-                                    <p className="text-xs text-gray-500">ที่มุมขวาบนของ Chrome</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center justify-center">
-                                <div className="h-8 w-0.5 bg-gray-300"></div>
-                            </div>
-                            <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
-                                <div className="bg-gray-100 p-2 rounded-lg shrink-0"><Smartphone className="w-6 h-6 text-green-600" /></div>
-                                <div>
-                                    <h4 className="font-bold text-gray-800 text-sm">2. ติดตั้งแอป / เพิ่มลงหน้าจอ</h4>
-                                    <p className="text-xs text-gray-500">เลือก "Install App" หรือ "Add to Home screen"</p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
 
-                {/* Footer */}
-                <div className="p-4 bg-white border-t border-gray-100 shrink-0">
-                    <button 
-                        onClick={onClose}
-                        className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center"
-                    >
-                        เริ่มใช้งานทันที <div className="ml-2">🚀</div>
-                    </button>
-                </div>
+                        <button 
+                            onClick={() => setStep('install_guide')}
+                            className="text-xs text-gray-400 underline hover:text-gray-600"
+                        >
+                            ข้ามไปดูวิธีติดตั้ง (สำหรับผู้ที่รู้วิธีแล้ว)
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        {/* Tabs */}
+                        <div className="flex border-b border-gray-100 shrink-0">
+                            <button 
+                                onClick={() => setActiveTab('ios')}
+                                className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'ios' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-500 hover:bg-gray-50'}`}
+                            >
+                                <span className="text-lg">🍎</span> iOS (iPhone)
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('android')}
+                                className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'android' ? 'text-green-600 border-b-2 border-green-600 bg-green-50' : 'text-gray-500 hover:bg-gray-50'}`}
+                            >
+                                <span className="text-lg">🤖</span> Android
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6 overflow-y-auto flex-1 bg-gray-50">
+                            {activeTab === 'ios' ? (
+                                <div className="space-y-4">
+                                    <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                                        <div className="bg-gray-100 p-2 rounded-lg shrink-0"><Share className="w-6 h-6 text-blue-500" /></div>
+                                        <div>
+                                            <h4 className="font-bold text-gray-800 text-sm">1. กดปุ่มแชร์ (Share)</h4>
+                                            <p className="text-xs text-gray-500">ที่แถบเมนูด้านล่างของ Safari</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-center">
+                                        <div className="h-8 w-0.5 bg-gray-300"></div>
+                                    </div>
+                                    <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                                        <div className="bg-gray-100 p-2 rounded-lg shrink-0"><PlusSquare className="w-6 h-6 text-gray-600" /></div>
+                                        <div>
+                                            <h4 className="font-bold text-gray-800 text-sm">2. เพิ่มไปยังหน้าจอโฮม</h4>
+                                            <p className="text-xs text-gray-500">เลื่อนหาเมนู "Add to Home Screen"</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                                        <div className="bg-gray-100 p-2 rounded-lg shrink-0"><MoreVertical className="w-6 h-6 text-gray-600" /></div>
+                                        <div>
+                                            <h4 className="font-bold text-gray-800 text-sm">1. กดเมนู 3 จุด</h4>
+                                            <p className="text-xs text-gray-500">ที่มุมขวาบนของ Chrome</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-center">
+                                        <div className="h-8 w-0.5 bg-gray-300"></div>
+                                    </div>
+                                    <div className="flex items-start gap-4 p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                                        <div className="bg-gray-100 p-2 rounded-lg shrink-0"><Smartphone className="w-6 h-6 text-green-600" /></div>
+                                        <div>
+                                            <h4 className="font-bold text-gray-800 text-sm">2. ติดตั้งแอป / เพิ่มลงหน้าจอ</h4>
+                                            <p className="text-xs text-gray-500">เลือก "Install App" หรือ "Add to Home screen"</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 bg-white border-t border-gray-100 shrink-0">
+                            <button 
+                                onClick={onClose}
+                                className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center"
+                            >
+                                เริ่มใช้งานทันที <div className="ml-2">🚀</div>
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

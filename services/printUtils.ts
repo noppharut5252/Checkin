@@ -23,8 +23,9 @@ interface PrintConfig {
     qrType?: 'checkin' | 'registration'; // Added qrType
 }
 
-// LIFF URL for Registration
-const LIFF_URL = "https://liff.line.me/2006369866-W1AicZ72";
+// LIFF URL Base
+const LIFF_BASE_ID = "2006369866-W1AicZ72";
+const LIFF_URL = `https://liff.line.me/${LIFF_BASE_ID}`;
 
 export const generatePosterHTML = async (
     activitiesToPrint: CheckInActivity[], 
@@ -59,15 +60,18 @@ export const generatePosterHTML = async (
         let badgeText = '';
         
         if (qrType === 'registration') {
-            // Registration Mode: Link to LIFF
+            // Registration Mode: Link to LIFF Root
             url = LIFF_URL;
             headerTitle = "REGISTRATION";
             headerSub = "ลงทะเบียน / เข้าสู่ระบบ";
             mainName = "UprightSchool Check-in";
             badgeText = "📱 สแกนด้วย LINE";
         } else {
-            // Activity Check-in Mode
-            url = `${window.location.origin}${window.location.pathname}#/checkin/${act.ActivityID}`;
+            // Activity Check-in Mode: LIFF Deep Link
+            // Construct URL: https://liff.line.me/<ID>/#/checkin/<ACT_ID>
+            // This ensures opening inside LINE context -> App.tsx handles routing
+            url = `${LIFF_URL}/#/checkin/${act.ActivityID}`;
+            
             headerTitle = "Check-In Point";
             headerSub = "จุดลงทะเบียนเข้าร่วมกิจกรรม";
             mainName = act.Name;

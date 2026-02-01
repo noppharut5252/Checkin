@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User } from '../types';
 import { loginStandardUser } from '../services/api';
 import { loginLiff } from '../services/liff';
-import { User as UserIcon, Lock, Loader2, CheckCircle, AlertCircle, LogIn } from 'lucide-react';
+import { User as UserIcon, Lock, Loader2, CheckCircle, AlertCircle, LogIn, ExternalLink } from 'lucide-react';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: User) => void;
@@ -17,7 +18,40 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [loginError, setLoginError] = useState('');
   
   // Login State Machine
-  const [loginStatus, setLoginStatus] = useState<'idle' | 'verifying' | 'success' | 'redirecting'>('idle');
+  const [loginStatus, setLoginStatus] = useState<'idle' | 'verifying' | 'success' | 'redirecting' | 'auto_redirecting'>('idle');
+
+  // --- Auto-Login Logic for Standard Camera Scans ---
+  useEffect(() => {
+      const checkAutoLogin = () => {
+          // Check if there is a pending redirect (meaning user scanned a QR code)
+          const pendingRedirect = sessionStorage.getItem('pendingRedirect');
+          
+          // Conditions to trigger auto-login:
+          // 1. Pending Redirect exists (scanned QR)
+          // 2. Not a generic home/profile redirect
+          // 3. We haven't already tried to auto-redirect in this session (to prevent infinite loops if user cancels)
+          const hasAutoRedirected = sessionStorage.getItem('autoLoginAttempted');
+
+          if (pendingRedirect && 
+              pendingRedirect !== '/home' && 
+              pendingRedirect !== '/profile' && 
+              !hasAutoRedirected
+          ) {
+              console.log("Deep link detected, attempting auto LINE login...");
+              setLoginStatus('auto_redirecting');
+              
+              // Set flag to prevent loop if user hits "Back" from LINE
+              sessionStorage.setItem('autoLoginAttempted', 'true');
+
+              // Delay slightly to let UI render, then redirect
+              setTimeout(() => {
+                  handleLineLogin();
+              }, 1500);
+          }
+      };
+
+      checkAutoLogin();
+  }, []);
 
   const handleLineLogin = () => {
     loginLiff();
@@ -51,7 +85,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  // --- Render Loading/Success Overlay ---
+  // --- Render Loading/Success/Auto-Redirect Overlay ---
   if (loginStatus !== 'idle') {
       return (
           <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 font-kanit animate-in fade-in duration-300">
@@ -63,21 +97,33 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                       {/* Icon */}
                       <div className={`relative z-10 bg-white p-4 rounded-full shadow-sm border-2 transition-all duration-500 ${loginStatus === 'success' || loginStatus === 'redirecting' ? 'border-[#00247D]' : 'border-red-100'}`}>
                           {loginStatus === 'verifying' && <Loader2 className="w-10 h-10 text-[#00247D] animate-spin" />}
+                          {loginStatus === 'auto_redirecting' && <ExternalLink className="w-10 h-10 text-[#06C755] animate-bounce" />}
                           {(loginStatus === 'success' || loginStatus === 'redirecting') && <CheckCircle className="w-10 h-10 text-[#00247D] animate-in zoom-in duration-300" />}
                       </div>
                   </div>
 
                   <h3 className="text-xl font-bold text-[#00247D] mb-2">
                       {loginStatus === 'verifying' && 'กำลังตรวจสอบข้อมูล...'}
+                      {loginStatus === 'auto_redirecting' && 'กำลังเข้าสู่ระบบ LINE...'}
                       {loginStatus === 'success' && 'เข้าสู่ระบบสำเร็จ!'}
                       {loginStatus === 'redirecting' && 'กำลังเข้าสู่ Dashboard...'}
                   </h3>
                   
                   <p className="text-gray-500 text-sm mb-6">
                       {loginStatus === 'verifying' && 'กรุณารอสักครู่ ระบบกำลังยืนยันตัวตน'}
+                      {loginStatus === 'auto_redirecting' && 'ระบบตรวจพบการสแกน QR Code กำลังเชื่อมต่อบัญชีอัตโนมัติ'}
                       {loginStatus === 'success' && 'ยินดีต้อนรับกลับเข้าสู่ระบบ'}
                       {loginStatus === 'redirecting' && 'เตรียมพร้อมจัดการข้อมูลการแข่งขัน'}
                   </p>
+                  
+                  {loginStatus === 'auto_redirecting' && (
+                      <button 
+                          onClick={() => handleLineLogin()}
+                          className="text-xs text-gray-400 underline hover:text-[#06C755]"
+                      >
+                          หากหน้านี้ค้าง คลิกที่นี่
+                      </button>
+                  )}
               </div>
           </div>
       );

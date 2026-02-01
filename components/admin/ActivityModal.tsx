@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { CheckInActivity, CheckInLocation } from '../../types';
-import { Loader2, Upload, X, Camera, Save, Layers, Users, Tag, Power, Image, Lock, ShieldAlert, Trash2 } from 'lucide-react';
+import { Loader2, Upload, X, Camera, Save, Layers, Users, Tag, Power, Image, Lock, ShieldAlert, Trash2, FileText } from 'lucide-react';
 import { saveActivity, uploadImage } from '../../services/api';
 import { resizeImage, getThaiDateTimeValue, thaiInputToISO } from '../../services/utils';
 
@@ -46,6 +46,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
                 Levels: initialData.Levels || '',
                 ReqStudents: initialData.ReqStudents || 0,
                 ReqTeachers: initialData.ReqTeachers || 0,
+                SurveyLink: initialData.SurveyLink || '',
                 // Boolean Flags
                 RequirePhoto: parseBool(initialData.RequirePhoto),
                 IsLocked: parseBool(initialData.IsLocked),
@@ -283,6 +284,20 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ isOpen, onClose, initialD
                                 <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
                             </label>
                         </div>
+                    </div>
+
+                    {/* Survey Link */}
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1 flex items-center">
+                            <FileText className="w-3 h-3 mr-1" /> ลิงก์แบบประเมิน (Google Form URL)
+                        </label>
+                        <input 
+                            className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
+                            placeholder="https://forms.gle/..." 
+                            value={editAct.SurveyLink || ''} 
+                            onChange={e => setEditAct({...editAct, SurveyLink: e.target.value})} 
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1">ผู้ใช้จะเห็นปุ่มประเมินหลังจากเช็คอินสำเร็จ</p>
                     </div>
 
                     <div>

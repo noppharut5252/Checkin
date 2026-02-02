@@ -4,9 +4,10 @@ import { AppData, CheckInActivity, CheckInLocation, CheckInUser } from '../types
 import { 
     MapPin, Camera, Navigation, AlertOctagon, CheckCircle, Loader2, Send, 
     MessageSquare, AlertTriangle, ArrowLeft, RefreshCw, FileCheck, Signal, 
-    SignalHigh, SignalLow, X, Zap, Check, Image, RotateCcw, FileText
+    SignalHigh, SignalLow, X, Zap, Check, Image, RotateCcw, FileText,
+    LayoutDashboard, History
 } from 'lucide-react';
-import { performCheckIn, uploadCheckInImage, getUserCheckInHistory, updateCheckInSurveyStatus } from '../services/api';
+import { performCheckIn, uploadCheckInImage, getUserCheckInHistory, updateCheckInSurveyStatus, fetchActivityDetail } from '../services/api';
 import { useParams, useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 
@@ -23,6 +24,25 @@ interface CheckInViewProps {
     user: CheckInUser;
     activityId?: string;
 }
+
+// --- Helper: Success Sound & Haptic ---
+const playSuccessFeedback = () => {
+    // 1. Haptic Feedback (Vibrate)
+    if (navigator.vibrate) {
+        // Success pattern: Short, Short, Long
+        navigator.vibrate([100, 50, 200]);
+    }
+
+    // 2. Audio Feedback (Ding!)
+    try {
+        // Use a hosted short chime sound
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        audio.volume = 0.5;
+        audio.play().catch(e => console.warn("Audio autoplay blocked", e));
+    } catch (e) {
+        console.warn("Audio error", e);
+    }
+};
 
 // --- Helper: Circular Progress ---
 const CircularDistance: React.FC<{ distance: number, radius: number, maxRange?: number }> = ({ distance, radius, maxRange = 500 }) => {
@@ -232,9 +252,14 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     const [avgPos, setAvgPos] = useState<{ lat: number, lng: number } | null>(null);
     const [photo, setPhoto] = useState<string | null>(null);
     const [comment, setComment] = useState('');
-    const [checkedInDetail, setCheckedInDetail] = useState<any>(null); // This holds the CheckInID
+    const [checkedInDetail, setCheckedInDetail] = useState<any>(null);
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     
+    // Smart Pre-loading State (for specific fetch)
+    const [quickActivity, setQuickActivity] = useState<CheckInActivity | null>(null);
+    const [quickLocation, setQuickLocation] = useState<CheckInLocation | null>(null);
+    const [isPreloading, setIsPreloading] = useState(false);
+
     // Notification State
     const [notification, setNotification] = useState<{ isOpen: boolean, type: 'success' | 'error' | 'loading', title: string, message: string }>({ isOpen: false, type: 'loading', title: '', message: '' });
 
@@ -245,11 +270,37 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
     const userMarker = useRef<L.Marker | null>(null);
     const targetCircle = useRef<L.Circle | null>(null);
 
-    // Data
-    const activity = useMemo(() => data.checkInActivities.find(a => a.ActivityID === activityId), [data, activityId]);
-    const location = useMemo(() => activity ? data.checkInLocations.find(l => l.LocationID === activity.LocationID) : null, [data, activity]);
+    // Data Resolution: Try Props (Cached) -> then Quick State (Pre-loaded)
+    const activity = useMemo(() => 
+        data.checkInActivities.find(a => a.ActivityID === activityId) || quickActivity, 
+        [data.checkInActivities, quickActivity, activityId]
+    );
+    const location = useMemo(() => 
+        data.checkInLocations.find(l => l.LocationID === activity?.LocationID) || quickLocation, 
+        [data.checkInLocations, quickLocation, activity]
+    );
 
     const isPhotoRequired = activity?.RequirePhoto === true;
+
+    // 0. Smart Pre-loading Effect
+    useEffect(() => {
+        // If we don't have activity data from main `data`, fetch specific detail immediately
+        const missingActivity = !data.checkInActivities.some(a => a.ActivityID === activityId);
+        
+        if (activityId && missingActivity && !quickActivity && !isPreloading) {
+            console.log("Smart Pre-loading triggered for:", activityId);
+            setIsPreloading(true);
+            fetchActivityDetail(activityId)
+                .then(res => {
+                    if (res.status === 'success' && res.activity) {
+                        setQuickActivity(res.activity);
+                        setQuickLocation(res.location);
+                    }
+                })
+                .catch(e => console.warn("Pre-load failed", e))
+                .finally(() => setIsPreloading(false));
+        }
+    }, [activityId, data.checkInActivities]);
 
     // 1. Init History Check
     useEffect(() => {
@@ -257,6 +308,7 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
         const checkHistory = async () => {
             if (!user.userid || !activityId) return;
             try {
+                // Optimistic check: if user already has it in local check? (Assume api check)
                 const logs = await getUserCheckInHistory(user.userid);
                 if (!isMounted) return;
                 const existing = logs.find((l: any) => l.ActivityID === activityId);
@@ -310,8 +362,6 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                 setDistance(d);
 
                 // --- Status Update ---
-                // Only allow 'ready' if accuracy is acceptable (< 100m ideally, allowing 60m for tolerance)
-                // And distance is within radius
                 if (d <= targetRadius) {
                     setStatus('ready');
                 } else {
@@ -433,11 +483,9 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
         });
 
         if (res.status === 'success') {
-            // Need to set checkInDetail for survey linking, but response might not include ID directly in old API
-            // Usually performCheckIn returns basic success. 
-            // We might need to refetch history to get ID, or assume success and wait for user to click button.
-            // But we need checkInId to update status. 
-            // Let's refetch history quickly to get the latest log for this activity
+            // Updated: Provide Feedback immediately
+            playSuccessFeedback();
+
             const history = await getUserCheckInHistory(uid);
             const latest = history.find((l: any) => l.ActivityID === activity.ActivityID);
             setCheckedInDetail(latest);
@@ -466,41 +514,56 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
             await updateCheckInSurveyStatus(checkedInDetail.CheckInID, 'Done');
         }
         
-        navigate('/checkin-dashboard', { state: { viewMode: 'history' } });
+        // Navigate after click if needed, or stay
     };
 
     // --- RENDER ---
 
-    if (!activity || !location) return <div className="p-10 text-center"><Loader2 className="animate-spin inline"/> Loading data...</div>;
+    if (!activity || !location) return <div className="min-h-screen flex flex-col items-center justify-center p-10 text-center"><Loader2 className="animate-spin mb-2 w-10 h-10 text-blue-500"/> <p className="text-gray-500">กำลังโหลดข้อมูลกิจกรรม...</p></div>;
 
     if (status === 'success') {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-green-50 p-6 text-center font-kanit animate-in fade-in">
-                <div className="bg-white p-8 rounded-3xl shadow-xl border-2 border-green-100 animate-in zoom-in w-full max-w-sm">
-                    <CheckCircle className="w-24 h-24 text-green-500 mx-auto mb-4" />
+                <div className="bg-white p-8 rounded-3xl shadow-xl border-2 border-green-100 animate-in zoom-in w-full max-w-sm relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-green-500"></div>
+                    
+                    <CheckCircle className="w-24 h-24 text-green-500 mx-auto mb-4 animate-bounce" />
                     <h2 className="text-2xl font-bold text-gray-800">เช็คอินสำเร็จ!</h2>
-                    <p className="text-gray-500 mt-2">ขอบคุณที่เข้าร่วมกิจกรรม<br/>"{activity.Name}"</p>
+                    <p className="text-gray-500 mt-2">บันทึกเวลาเข้าร่วมกิจกรรมเรียบร้อยแล้ว<br/>"{activity.Name}"</p>
+                    
                     <div className="mt-6 p-4 bg-green-50 rounded-xl text-green-800 text-sm font-mono border border-green-200">
                         {new Date().toLocaleString('th-TH')}
                     </div>
                     
-                    {/* Survey Button Section */}
-                    {activity.SurveyLink && (
-                        <button
-                            onClick={handleSurveyClick}
-                            className="mt-6 w-full py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl font-bold shadow-lg shadow-yellow-200 transition-transform active:scale-95 flex items-center justify-center gap-2 animate-bounce"
-                        >
-                            <FileText className="w-5 h-5" />
-                            ทำแบบประเมินความพึงพอใจ
-                        </button>
-                    )}
+                    {/* Updated Buttons */}
+                    <div className="mt-8 space-y-3">
+                        {activity.SurveyLink && (
+                            <button
+                                onClick={handleSurveyClick}
+                                className="w-full py-3.5 bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white rounded-xl font-bold shadow-lg shadow-orange-200 transition-transform active:scale-95 flex items-center justify-center gap-2 animate-pulse"
+                            >
+                                <FileText className="w-5 h-5" />
+                                ทำแบบประเมิน (Survey)
+                            </button>
+                        )}
 
-                    <button 
-                        onClick={() => navigate('/checkin-dashboard', { state: { viewMode: 'history' } })} 
-                        className={`mt-4 w-full py-3 rounded-xl font-bold transition-transform active:scale-95 ${activity.SurveyLink ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200'}`}
-                    >
-                        {activity.SurveyLink ? 'กลับหน้าหลัก' : 'เสร็จสิ้น'}
-                    </button>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => navigate('/home')} 
+                                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2"
+                            >
+                                <LayoutDashboard className="w-4 h-4" />
+                                หน้าหลัก
+                            </button>
+                            <button 
+                                onClick={() => navigate('/checkin-dashboard', { state: { viewMode: 'history' } })} 
+                                className="flex-1 py-3 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-xl font-bold transition-transform active:scale-95 flex items-center justify-center gap-2"
+                            >
+                                <History className="w-4 h-4" />
+                                ดูประวัติ
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -532,7 +595,10 @@ const CheckInView: React.FC<CheckInViewProps> = ({ data, user, activityId: propA
                         </button>
                     )}
 
-                    <button onClick={() => navigate(-1)} className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">ย้อนกลับ</button>
+                    <div className="flex gap-2">
+                        <button onClick={() => navigate('/home')} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors">หน้าหลัก</button>
+                        <button onClick={() => navigate('/checkin-dashboard', { state: { viewMode: 'history' } })} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">ดูประวัติ</button>
+                    </div>
                 </div>
             </div>
         );

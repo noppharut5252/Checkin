@@ -60,6 +60,12 @@ export const fetchData = async (): Promise<AppData> => {
     throw new Error(res.message || 'Failed to fetch data');
 };
 
+// Smart Pre-loading: Fetch single activity detail
+export const fetchActivityDetail = async (activityId: string): Promise<{ activity: CheckInActivity | null, location: CheckInLocation | null, status: string }> => {
+    const res = await apiRequest('getActivityDetail', { activityId });
+    return res;
+};
+
 export const checkUserRegistration = async (lineId: string): Promise<User | null> => {
     const res = await apiRequest('checkUser', { lineId });
     if (res.status === 'success' && res.exists) {

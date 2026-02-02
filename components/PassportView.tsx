@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppData, User, PassportMission, CheckInLog } from '../types';
-import { Award, Target, ShieldCheck, Lock, Calendar, RefreshCw, X, QrCode, Gift, MapPin, Check, Clock } from 'lucide-react';
+import { Award, Target, ShieldCheck, Lock, Calendar, RefreshCw, X, QrCode, Gift, MapPin, Check, Clock, User as UserIcon } from 'lucide-react';
 import { getUserCheckInHistory } from '../services/api';
 // @ts-ignore
 import confetti from 'canvas-confetti';
@@ -53,15 +53,17 @@ const PASSPORT_STYLES = `
   }
 `;
 
-// --- Redemption Modal ---
+// --- Redemption Modal (Enhanced for Staff Verification) ---
 const RedemptionModal = ({ isOpen, onClose, mission, user }: { isOpen: boolean, onClose: () => void, mission: PassportMission, user: User }) => {
     const [qrSrc, setQrSrc] = useState('');
+    const themeColor = mission.rewardColor || '#F59E0B';
 
     useEffect(() => {
         if (isOpen && mission) {
             // Generate QR Data: REDEEM|UserID|MissionID|Timestamp
             const redeemPayload = `REDEEM|${user.userid}|${mission.id}|${Date.now()}`;
-            QRCode.toDataURL(redeemPayload, { margin: 1, width: 300, color: { dark: '#1e3a8a' } })
+            // QR Color matches the theme (dark version)
+            QRCode.toDataURL(redeemPayload, { margin: 1, width: 300, color: { dark: '#000000', light: '#ffffff' } })
                 .then(setQrSrc);
         }
     }, [isOpen, mission, user]);
@@ -70,26 +72,59 @@ const RedemptionModal = ({ isOpen, onClose, mission, user }: { isOpen: boolean, 
 
     return (
         <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-            <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl relative animate-in zoom-in-95">
-                <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors">
-                    <X className="w-5 h-5 text-gray-500" />
+            <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl relative animate-in zoom-in-95 flex flex-col">
+                <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-black/20 hover:bg-black/30 rounded-full text-white transition-colors z-10">
+                    <X className="w-5 h-5" />
                 </button>
                 
-                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-center text-white">
-                    <Gift className="w-12 h-12 mx-auto mb-2 animate-bounce" />
-                    <h3 className="text-xl font-bold">แลกของรางวัล</h3>
-                    <p className="text-indigo-100 text-sm">{mission.rewardLabel}</p>
+                {/* Header Ticket Style */}
+                <div 
+                    className="p-8 text-center text-white relative overflow-hidden"
+                    style={{ backgroundColor: themeColor }}
+                >
+                    {/* Pattern Overlay */}
+                    <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                    
+                    <div className="relative z-10">
+                        <div className="bg-white/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm shadow-inner">
+                            <Gift className="w-8 h-8 text-white animate-bounce" />
+                        </div>
+                        <h3 className="text-xs font-bold uppercase tracking-widest opacity-90 mb-1">Redemption Ticket</h3>
+                        <h2 className="text-2xl font-black leading-tight drop-shadow-md">{mission.rewardLabel}</h2>
+                        <p className="text-white/80 text-xs mt-2 font-medium bg-black/10 inline-block px-3 py-1 rounded-full">
+                            {mission.title}
+                        </p>
+                    </div>
                 </div>
 
-                <div className="p-8 flex flex-col items-center text-center">
-                    <div className="bg-white p-2 rounded-xl border-4 border-dashed border-indigo-200 mb-4">
-                        {qrSrc ? <img src={qrSrc} className="w-48 h-48 object-contain" /> : <div className="w-48 h-48 bg-gray-100 animate-pulse rounded-lg" />}
+                {/* Body */}
+                <div className="p-6 flex flex-col items-center text-center bg-white relative">
+                    {/* Cutout Effect */}
+                    <div className="absolute -top-3 left-0 w-6 h-6 bg-black/80 rounded-full"></div>
+                    <div className="absolute -top-3 right-0 w-6 h-6 bg-black/80 rounded-full"></div>
+                    <div className="absolute top-0 left-3 right-3 border-t-2 border-dashed border-gray-300"></div>
+
+                    <div className="mb-4">
+                        <div className="text-xs text-gray-400 font-bold uppercase mb-2">Scan to Redeem</div>
+                        <div className="p-2 rounded-xl border-4 border-dashed" style={{ borderColor: themeColor }}>
+                            {qrSrc ? <img src={qrSrc} className="w-48 h-48 object-contain mix-blend-multiply" /> : <div className="w-48 h-48 bg-gray-100 animate-pulse rounded-lg" />}
+                        </div>
                     </div>
-                    <p className="text-sm text-gray-500 mb-4">
-                        แสดง QR Code นี้ให้เจ้าหน้าที่<br/>เพื่อรับของรางวัลหรือประทับตราของจริง
-                    </p>
-                    <div className="text-xs bg-gray-50 text-gray-400 px-3 py-1 rounded-full font-mono">
-                        REF: {mission.id.split('-')[1] || mission.id}
+
+                    {/* User Identity for Staff */}
+                    <div className="w-full bg-gray-50 rounded-xl p-3 border border-gray-100 flex items-center gap-3 text-left">
+                        <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden shrink-0 border border-gray-300">
+                            <img src={user.PictureUrl || `https://ui-avatars.com/api/?name=${user.Name}`} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-xs text-gray-400 font-bold uppercase">Owner</p>
+                            <p className="text-sm font-bold text-gray-900 truncate">{user.Name}</p>
+                            <p className="text-xs text-gray-500 truncate">ID: {user.userid}</p>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 text-[10px] text-gray-400 font-mono">
+                        REF: {mission.id.split('-')[1] || mission.id} • {new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}
                     </div>
                 </div>
             </div>

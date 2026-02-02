@@ -187,7 +187,7 @@ const CheckInHistory: React.FC<CheckInHistoryProps> = ({ user, data }) => {
 
                             {/* Timeline Items */}
                             <div className="relative pl-4 border-l-2 border-gray-200 space-y-6 ml-2 pr-1">
-                                {logs.map((item) => {
+                                {(logs as CheckInLog[]).map((item) => {
                                     // Lookup Survey Link
                                     const activity = data?.checkInActivities.find(a => a.ActivityID === item.ActivityID);
                                     const surveyLink = activity?.SurveyLink;

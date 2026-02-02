@@ -261,12 +261,13 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     };
 
     const downloadStatsCSV = (userList: any[], missionTitle: string) => {
-        const headers = ['UserID', 'Name', 'School', 'CompletedTime'];
+        const headers = ['UserID', 'Name', 'School', 'CompletedTime', 'Reward'];
         const rows = userList.map(u => [
             u.userId,
             `"${u.user?.Name || u.userId}"`,
             `"${u.user?.SchoolID || '-'}"`,
-            `"${new Date(u.timestamp).toLocaleString('th-TH')}"`
+            `"${new Date(u.timestamp).toLocaleString('th-TH')}"`,
+            `"${viewingStatsFor?.rewardLabel}"`
         ]);
         
         const csvContent = "\uFEFF" + [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n');
@@ -290,27 +291,30 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         if (!viewingStatsFor) return null;
         
         const completedUsers = getCompletedUsers(viewingStatsFor);
+        const themeColor = viewingStatsFor.rewardColor || '#F59E0B';
         
         return (
             <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-                <div className="bg-white rounded-2xl w-full max-w-3xl flex flex-col max-h-[85vh] shadow-2xl">
-                    <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
+                <div className="bg-white rounded-2xl w-full max-w-3xl flex flex-col max-h-[85vh] shadow-2xl overflow-hidden">
+                    <div className="p-5 border-b border-gray-100 flex justify-between items-center text-white" style={{ backgroundColor: themeColor }}>
                         <div>
-                            <h3 className="font-bold text-lg text-gray-800 flex items-center">
-                                <Award className="w-5 h-5 mr-2 text-indigo-600"/>
-                                รายชื่อผู้ทำสำเร็จ ({completedUsers.length})
+                            <h3 className="font-bold text-lg flex items-center">
+                                <Award className="w-5 h-5 mr-2 text-white/80"/>
+                                รายชื่อผู้มีสิทธิ์รับรางวัล ({completedUsers.length})
                             </h3>
-                            <p className="text-xs text-gray-500 mt-1">ภารกิจ: {viewingStatsFor.title}</p>
+                            <p className="text-xs text-white/80 mt-1 font-medium bg-black/10 inline-block px-2 py-0.5 rounded">
+                                {viewingStatsFor.title} • {viewingStatsFor.rewardLabel}
+                            </p>
                         </div>
                         <div className="flex gap-2">
                             <button 
                                 onClick={() => downloadStatsCSV(completedUsers, viewingStatsFor.title)}
-                                className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-bold border border-green-200 hover:bg-green-100 flex items-center"
+                                className="px-3 py-1.5 bg-white/20 text-white rounded-lg text-xs font-bold hover:bg-white/30 flex items-center backdrop-blur-sm"
                             >
                                 <Download className="w-4 h-4 mr-1"/> CSV
                             </button>
-                            <button onClick={() => setViewingStatsFor(null)} className="p-1.5 hover:bg-gray-200 rounded-full">
-                                <X className="w-5 h-5 text-gray-500"/>
+                            <button onClick={() => setViewingStatsFor(null)} className="p-1.5 hover:bg-white/20 rounded-full text-white/80 hover:text-white transition-colors">
+                                <X className="w-5 h-5"/>
                             </button>
                         </div>
                     </div>

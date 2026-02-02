@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User, RedemptionLog } from '../../types';
-import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift } from 'lucide-react';
+import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, UserCheck } from 'lucide-react';
 import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers, redeemReward, getRedemptions } from '../../services/api';
 import { resizeImage } from '../../services/utils';
 import SearchableSelect from '../SearchableSelect';
+import QRScannerModal from '../QRScannerModal';
 
 interface PassportSettingsProps {
     data: AppData;
@@ -18,15 +19,28 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     const [activeMissionId, setActiveMissionId] = useState<string | null>(null);
     const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     
-    // Stats State
+    // Stats & Data State
     const [allLogs, setAllLogs] = useState<CheckInLog[]>([]);
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [allRedemptions, setAllRedemptions] = useState<RedemptionLog[]>([]);
     const [isLoadingStats, setIsLoadingStats] = useState(false);
+    const [isDataLoaded, setIsDataLoaded] = useState(false);
+    
+    // UI State
     const [viewingStatsFor, setViewingStatsFor] = useState<PassportMission | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [savingRedemption, setSavingRedemption] = useState<string | null>(null); // UserId being redeemed
     
+    // Scanner State
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [verifyResult, setVerifyResult] = useState<{
+        status: 'valid' | 'invalid' | 'redeemed' | 'not_completed';
+        user?: User;
+        mission?: PassportMission;
+        redemption?: RedemptionLog;
+        message?: string;
+    } | null>(null);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Auto-hide alert after 3 seconds
@@ -37,29 +51,58 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         }
     }, [alertMessage]);
 
-    // Fetch Logs & Users for Statistics
-    useEffect(() => {
-        const fetchStats = async () => {
-            setIsLoadingStats(true);
-            try {
-                const [logsRes, usersRes, redemptionsRes] = await Promise.all([
-                    getCheckInLogs(),
-                    getAllUsers(),
-                    getRedemptions()
-                ]);
-                setAllLogs(logsRes || []);
-                setAllUsers(usersRes || []);
-                setAllRedemptions(redemptionsRes || []);
-            } catch (e) {
-                console.error("Failed to load stats data");
-            } finally {
-                setIsLoadingStats(false);
-            }
-        };
-        fetchStats();
-    }, []);
+    // Fetch Logs & Users
+    const loadData = async () => {
+        if (isDataLoaded) return;
+        setIsLoadingStats(true);
+        try {
+            const [logsRes, usersRes, redemptionsRes] = await Promise.all([
+                getCheckInLogs(),
+                getAllUsers(),
+                getRedemptions()
+            ]);
+            setAllLogs(logsRes || []);
+            setAllUsers(usersRes || []);
+            setAllRedemptions(redemptionsRes || []);
+            setIsDataLoaded(true);
+        } catch (e) {
+            console.error("Failed to load stats data");
+            setAlertMessage({ type: 'error', text: 'โหลดข้อมูลไม่สำเร็จ' });
+        } finally {
+            setIsLoadingStats(false);
+        }
+    };
 
-    // --- Logic: Get List of Completed Users ---
+    // Load data when opening stats or scanner
+    useEffect(() => {
+        if (viewingStatsFor || isScannerOpen) {
+            loadData();
+        }
+    }, [viewingStatsFor, isScannerOpen]);
+
+    // --- Logic: Check Mission Completion ---
+    const checkUserCompletion = (userId: string, mission: PassportMission) => {
+        const userLogs = allLogs.filter(l => l.UserID === userId);
+        
+        return mission.requirements.every(req => {
+            if (req.type === 'specific_activity') {
+                return userLogs.some(l => String(l.ActivityID) === String(req.targetId));
+            } else if (req.type === 'total_count') {
+                const dailyLogs = userLogs.filter(l => l.Timestamp.startsWith(mission.date));
+                return dailyLogs.length >= req.targetValue;
+            } else if (req.type === 'category_count') {
+                const dailyLogs = userLogs.filter(l => l.Timestamp.startsWith(mission.date));
+                const catLogs = dailyLogs.filter(l => {
+                    const act = data.activities.find(a => String(a.id) === String(l.ActivityID));
+                    return act?.category === req.targetId;
+                });
+                return catLogs.length >= req.targetValue;
+            }
+            return false;
+        });
+    };
+
+    // --- Logic: Get List of Completed Users (Batch) ---
     const getCompletedUsers = (mission: PassportMission) => {
         if (allLogs.length === 0 || mission.requirements.length === 0) return [];
 
@@ -89,7 +132,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                     const dailyLogs = userLogs.filter(l => l.Timestamp.startsWith(mission.date));
                     if (dailyLogs.length >= req.targetValue) {
                         satisfied = true;
-                        // Approximate completion time: time of the Nth log
+                        // Approximate completion time
                         const sorted = dailyLogs.sort((a,b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
                         const targetLog = sorted[req.targetValue - 1];
                         if (targetLog) reqTime = new Date(targetLog.Timestamp).getTime();
@@ -126,6 +169,71 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         return completedUsers.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     };
 
+    // --- Actions ---
+
+    const handleScanResult = (code: string) => {
+        setIsScannerOpen(false);
+        // Format: REDEEM|UserID|MissionID|Timestamp
+        const parts = code.split('|');
+        
+        if (parts[0] !== 'REDEEM' || parts.length < 3) {
+            setVerifyResult({ status: 'invalid', message: 'QR Code ไม่ถูกต้อง (รูปแบบผิด)' });
+            return;
+        }
+
+        const [_, userId, missionId] = parts;
+        
+        const mission = config.missions.find(m => m.id === missionId);
+        if (!mission) {
+            setVerifyResult({ status: 'invalid', message: 'ไม่พบภารกิจนี้ในระบบ' });
+            return;
+        }
+
+        const user = allUsers.find(u => u.UserID === userId) || { UserID: userId, Name: 'Unknown User', Role: 'Guest' } as User;
+
+        // Check if already redeemed
+        const existingRedemption = allRedemptions.find(r => r.UserID === userId && r.MissionID === missionId);
+        if (existingRedemption) {
+            setVerifyResult({ status: 'redeemed', user, mission, redemption: existingRedemption });
+            return;
+        }
+
+        // Check completion status (Security Check)
+        const isComplete = checkUserCompletion(userId, mission);
+        if (!isComplete) {
+            setVerifyResult({ status: 'not_completed', user, mission, message: 'ผู้ใช้ยังทำภารกิจไม่ครบเงื่อนไข' });
+            return;
+        }
+
+        // Valid and Ready
+        setVerifyResult({ status: 'valid', user, mission });
+    };
+
+    const confirmRedemptionFromScan = async () => {
+        if (!verifyResult || !verifyResult.user || !verifyResult.mission) return;
+        
+        const { user, mission } = verifyResult;
+        setSavingRedemption(user.UserID); // use for loading state
+        
+        try {
+            const res = await redeemReward(user.UserID, mission.id);
+            if (res.status === 'success') {
+                const newLog = { UserID: user.UserID, MissionID: mission.id, Timestamp: new Date().toISOString() };
+                setAllRedemptions(prev => [...prev, newLog]);
+                setVerifyResult({ ...verifyResult, status: 'redeemed', redemption: newLog });
+                setAlertMessage({ type: 'success', text: 'บันทึกการแจกรางวัลสำเร็จ' });
+                // Play Success Sound
+                new Audio('https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3').play().catch(()=>{});
+            } else {
+                alert('บันทึกไม่สำเร็จ: ' + res.message);
+            }
+        } catch (e) {
+            alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+        } finally {
+            setSavingRedemption(null);
+        }
+    };
+
     const handleSave = async () => {
         setIsSaving(true);
         try {
@@ -157,162 +265,137 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         }
     };
 
+    // ... (Existing CRUD functions: addMission, updateMission, etc.) ...
+    // Note: Re-implementing them briefly to ensure file completeness
     const addMission = () => {
-        const newMission: PassportMission = {
-            id: `m-${Date.now()}`,
-            date: new Date().toISOString().split('T')[0],
-            title: 'ภารกิจใหม่',
-            requirements: [],
-            rewardColor: '#F59E0B', 
-            rewardLabel: 'Completed'
-        };
+        const newMission: PassportMission = { id: `m-${Date.now()}`, date: new Date().toISOString().split('T')[0], title: 'ภารกิจใหม่', requirements: [], rewardColor: '#F59E0B', rewardLabel: 'Completed' };
         setConfig(prev => ({ missions: [...prev.missions, newMission] }));
         setActiveMissionId(newMission.id);
     };
-
     const updateMission = (id: string, field: keyof PassportMission, value: any) => {
-        setConfig(prev => ({
-            missions: prev.missions.map(m => m.id === id ? { ...m, [field]: value } : m)
-        }));
+        setConfig(prev => ({ missions: prev.missions.map(m => m.id === id ? { ...m, [field]: value } : m) }));
     };
-
     const duplicateMission = (mission: PassportMission) => {
-        const newMission: PassportMission = {
-            ...mission,
-            id: `m-${Date.now()}`,
-            title: `${mission.title} (Copy)`,
-            requirements: mission.requirements.map(r => ({ ...r, id: `r-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` }))
-        };
+        const newMission: PassportMission = { ...mission, id: `m-${Date.now()}`, title: `${mission.title} (Copy)`, requirements: mission.requirements.map(r => ({ ...r, id: `r-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` })) };
         setConfig(prev => ({ missions: [...prev.missions, newMission] }));
         setActiveMissionId(newMission.id);
         setAlertMessage({ type: 'success', text: 'คัดลอกภารกิจแล้ว' });
     };
-
     const deleteMission = (id: string) => {
         if(!confirm('ยืนยันการลบภารกิจนี้?')) return;
         setConfig(prev => ({ missions: prev.missions.filter(m => m.id !== id) }));
         if (activeMissionId === id) setActiveMissionId(null);
     };
-
     const moveMission = (index: number, direction: 'up' | 'down') => {
         const newMissions = [...config.missions];
-        if (direction === 'up' && index > 0) {
-            [newMissions[index], newMissions[index - 1]] = [newMissions[index - 1], newMissions[index]];
-        } else if (direction === 'down' && index < newMissions.length - 1) {
-            [newMissions[index], newMissions[index + 1]] = [newMissions[index + 1], newMissions[index]];
-        }
+        if (direction === 'up' && index > 0) [newMissions[index], newMissions[index - 1]] = [newMissions[index - 1], newMissions[index]];
+        else if (direction === 'down' && index < newMissions.length - 1) [newMissions[index], newMissions[index + 1]] = [newMissions[index + 1], newMissions[index]];
         setConfig(prev => ({ ...prev, missions: newMissions }));
     };
-
-    // Requirement Logic
     const addRequirement = (missionId: string) => {
-        const newReq: PassportRequirement = {
-            id: `r-${Date.now()}`,
-            type: 'specific_activity',
-            label: 'เข้าร่วมกิจกรรม...',
-            targetValue: 1
-        };
-        setConfig(prev => ({
-            missions: prev.missions.map(m => m.id === missionId ? { ...m, requirements: [...m.requirements, newReq] } : m)
-        }));
+        const newReq: PassportRequirement = { id: `r-${Date.now()}`, type: 'specific_activity', label: 'เข้าร่วมกิจกรรม...', targetValue: 1 };
+        setConfig(prev => ({ missions: prev.missions.map(m => m.id === missionId ? { ...m, requirements: [...m.requirements, newReq] } : m) }));
     };
-
     const updateRequirement = (missionId: string, reqId: string, field: keyof PassportRequirement, value: any) => {
-        setConfig(prev => ({
-            missions: prev.missions.map(m => {
-                if (m.id !== missionId) return m;
-                return {
-                    ...m,
-                    requirements: m.requirements.map(r => r.id === reqId ? { ...r, [field]: value } : r)
-                };
-            })
-        }));
+        setConfig(prev => ({ missions: prev.missions.map(m => { if (m.id !== missionId) return m; return { ...m, requirements: m.requirements.map(r => r.id === reqId ? { ...r, [field]: value } : r) }; }) }));
     };
-
     const removeRequirement = (missionId: string, reqId: string) => {
-        setConfig(prev => ({
-            missions: prev.missions.map(m => {
-                if (m.id !== missionId) return m;
-                return {
-                    ...m,
-                    requirements: m.requirements.filter(r => r.id !== reqId)
-                };
-            })
-        }));
+        setConfig(prev => ({ missions: prev.missions.map(m => { if (m.id !== missionId) return m; return { ...m, requirements: m.requirements.filter(r => r.id !== reqId) }; }) }));
     };
-
     const moveRequirement = (missionId: string, index: number, direction: 'up' | 'down') => {
-        setConfig(prev => ({
-            missions: prev.missions.map(m => {
-                if (m.id !== missionId) return m;
-                const newReqs = [...m.requirements];
-                if (direction === 'up' && index > 0) {
-                    [newReqs[index], newReqs[index - 1]] = [newReqs[index - 1], newReqs[index]];
-                } else if (direction === 'down' && index < newReqs.length - 1) {
-                    [newReqs[index], newReqs[index + 1]] = [newReqs[index + 1], newReqs[index]];
-                }
-                return { ...m, requirements: newReqs };
-            })
-        }));
+        setConfig(prev => ({ missions: prev.missions.map(m => { if (m.id !== missionId) return m; const newReqs = [...m.requirements]; if (direction === 'up' && index > 0) [newReqs[index], newReqs[index - 1]] = [newReqs[index - 1], newReqs[index]]; else if (direction === 'down' && index < newReqs.length - 1) [newReqs[index], newReqs[index + 1]] = [newReqs[index + 1], newReqs[index]]; return { ...m, requirements: newReqs }; }) }));
     };
-
-    // --- Image Upload ---
     const handleStampUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file || !activeMissionId) return;
-        
         setIsUploading(true);
-        try {
-            const base64 = await resizeImage(file, 300, 300, 0.9, 'image/png');
-            const res = await uploadImage(base64, `stamp_${Date.now()}.png`);
-            if (res.status === 'success' && res.fileUrl) {
-                updateMission(activeMissionId, 'stampImage', res.fileUrl);
-            } else {
-                alert('Upload failed');
-            }
-        } catch (err) {
-            console.error(err);
-            alert('Error uploading stamp');
-        } finally {
-            setIsUploading(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
+        try { const base64 = await resizeImage(file, 300, 300, 0.9, 'image/png'); const res = await uploadImage(base64, `stamp_${Date.now()}.png`); if (res.status === 'success' && res.fileUrl) updateMission(activeMissionId, 'stampImage', res.fileUrl); else alert('Upload failed'); } catch (err) { console.error(err); alert('Error uploading stamp'); } finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
     };
-
-    const removeStampImage = (missionId: string) => {
-        updateMission(missionId, 'stampImage', '');
-    };
+    const removeStampImage = (missionId: string) => updateMission(missionId, 'stampImage', '');
 
     const downloadStatsCSV = (userList: any[], missionTitle: string) => {
         const headers = ['UserID', 'Name', 'School', 'CompletedTime', 'Reward', 'RedeemedStatus', 'RedeemedTime'];
         const rows = userList.map(u => {
             const redemption = allRedemptions.find(r => r.UserID === u.userId && r.MissionID === viewingStatsFor?.id);
             return [
-                u.userId,
-                `"${u.user?.Name || u.userId}"`,
-                `"${u.user?.SchoolID || '-'}"`,
-                `"${new Date(u.timestamp).toLocaleString('th-TH')}"`,
-                `"${viewingStatsFor?.rewardLabel}"`,
-                redemption ? 'Received' : 'Pending',
-                redemption ? `"${new Date(redemption.Timestamp).toLocaleString('th-TH')}"` : ''
+                u.userId, `"${u.user?.Name || u.userId}"`, `"${u.user?.SchoolID || '-'}"`, `"${new Date(u.timestamp).toLocaleString('th-TH')}"`, `"${viewingStatsFor?.rewardLabel}"`, redemption ? 'Received' : 'Pending', redemption ? `"${new Date(redemption.Timestamp).toLocaleString('th-TH')}"` : ''
             ];
         });
-        
         const csvContent = "\uFEFF" + [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `completed_users_${missionTitle.substring(0,10)}_${Date.now()}.csv`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `completed_users_${missionTitle.substring(0,10)}_${Date.now()}.csv`; document.body.appendChild(link); link.click(); document.body.removeChild(link);
     };
 
     const activityOptions = data.activities.map(a => ({ label: a.name, value: a.id }));
     const categoryOptions = Array.from(new Set(data.activities.map(a => a.category))).map(c => ({ label: c, value: c }));
-
     const activeMission = config.missions.find(m => m.id === activeMissionId);
+
+    // --- Components: Verification Modal ---
+    const VerificationModal = () => {
+        if (!verifyResult) return null;
+        
+        const { status, user, mission, redemption, message } = verifyResult;
+        const color = status === 'valid' ? 'green' : status === 'redeemed' ? 'blue' : 'red';
+        const Icon = status === 'valid' ? CheckCircle : status === 'redeemed' ? Check : AlertTriangle;
+
+        return (
+            <div className="fixed inset-0 z-[400] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+                <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl relative animate-in zoom-in-95">
+                    <button onClick={() => setVerifyResult(null)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors z-10"><X className="w-5 h-5 text-gray-500" /></button>
+                    
+                    <div className={`p-6 text-center text-white bg-${color}-600`}>
+                        <div className="bg-white/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm shadow-inner">
+                            <Icon className="w-10 h-10 text-white" />
+                        </div>
+                        <h2 className="text-2xl font-bold">
+                            {status === 'valid' && 'พร้อมแจกรางวัล'}
+                            {status === 'redeemed' && 'รับไปแล้ว'}
+                            {status === 'not_completed' && 'เงื่อนไขไม่ครบ'}
+                            {status === 'invalid' && 'QR ไม่ถูกต้อง'}
+                        </h2>
+                        {message && <p className="text-white/80 text-sm mt-1">{message}</p>}
+                    </div>
+
+                    <div className="p-6 space-y-4">
+                        {user && (
+                            <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                <img src={user.PictureUrl || `https://ui-avatars.com/api/?name=${user.Name}`} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" />
+                                <div>
+                                    <div className="font-bold text-gray-900">{user.Name || 'Unknown User'}</div>
+                                    <div className="text-xs text-gray-500">{user.SchoolID || user.userid}</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {mission && (
+                            <div className="text-center border-t border-dashed border-gray-200 pt-4">
+                                <div className="text-xs text-gray-400 uppercase font-bold mb-1">Reward Item</div>
+                                <div className="text-lg font-black text-gray-800" style={{ color: mission.rewardColor }}>{mission.rewardLabel}</div>
+                                <div className="text-sm text-gray-500">{mission.title}</div>
+                            </div>
+                        )}
+
+                        {status === 'redeemed' && redemption && (
+                            <div className="bg-blue-50 text-blue-700 text-xs p-3 rounded-lg text-center">
+                                รับไปเมื่อ: {new Date(redemption.Timestamp).toLocaleString('th-TH')}
+                            </div>
+                        )}
+
+                        {status === 'valid' && (
+                            <button 
+                                onClick={confirmRedemptionFromScan}
+                                disabled={!!savingRedemption}
+                                className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-200 active:scale-95 transition-all flex items-center justify-center"
+                            >
+                                {savingRedemption ? <Loader2 className="w-5 h-5 animate-spin"/> : <Gift className="w-5 h-5 mr-2"/>}
+                                ยืนยันการแจกรางวัล
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     // --- Render Stats Modal ---
     const renderStatsModal = () => {
@@ -452,21 +535,30 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                 </div>
             )}
 
-            {/* Stats Modal */}
+            {/* Modals */}
             {renderStatsModal()}
+            <QRScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScan={handleScanResult} />
+            <VerificationModal />
 
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h2 className="text-xl font-bold text-gray-800 flex items-center">
                         <Award className="w-6 h-6 mr-2 text-indigo-600"/> ตั้งค่า Passport ภารกิจ
                     </h2>
                     <p className="text-gray-500 text-sm">กำหนดเงื่อนไขการผ่านด่านและการรับตราประทับในแต่ละวัน</p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
+                    <button 
+                        onClick={() => setIsScannerOpen(true)} 
+                        className="px-6 py-2.5 bg-green-600 text-white rounded-lg font-bold flex items-center hover:bg-green-700 shadow-md transition-all active:scale-95"
+                    >
+                        <ScanLine className="w-5 h-5 mr-2" />
+                        สแกนแจกรางวัล
+                    </button>
                     <button 
                         onClick={handleSave} 
                         disabled={isSaving}
-                        className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold flex items-center hover:bg-indigo-700 disabled:opacity-70 shadow-sm transition-all active:scale-95"
+                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-bold flex items-center hover:bg-indigo-700 disabled:opacity-70 shadow-sm transition-all active:scale-95"
                     >
                         {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Save className="w-4 h-4 mr-2"/>}
                         บันทึกทั้งหมด

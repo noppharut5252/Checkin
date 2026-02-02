@@ -4,23 +4,52 @@ import { AppData, User, CheckInLocation, CheckInActivity, PassportConfig, Announ
 // Replace with your actual Google Apps Script Web App URL
 const API_URL = "https://script.google.com/macros/s/AKfycbxyS_GG5snXmt2YTcMCMMYgfQZmzTynb-esxe8N2NBAdC1uGdIGGnPh7W0PuId4r4OF/exec";
 
-const apiRequest = async (action: string, params: any = {}) => {
-    try {
-        // GAS Web App often requires text/plain to avoid CORS preflight issues with application/json
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action, ...params }),
-        });
-        const data = await response.json();
-        return data;
-    } catch (error) {
-        console.error(`API Error (${action}):`, error);
-        throw error;
+// Helper: Sleep function for delay
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const apiRequest = async (action: string, params: any = {}, retries = 3, backoff = 1000) => {
+    for (let i = 0; i < retries; i++) {
+        try {
+            // GAS Web App often requires text/plain to avoid CORS preflight issues with application/json
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action, ...params }),
+            });
+            
+            const data = await response.json();
+
+            // Handle GAS LockService Timeout specifically or generic error
+            if (data.status === 'error') {
+                const msg = data.message?.toLowerCase() || '';
+                // If server is busy or locked, throw to trigger retry
+                if (msg.includes('server busy') || msg.includes('lock') || msg.includes('timeout')) {
+                    throw new Error('Server busy');
+                }
+                // If it's a logic error (e.g., user not found), return immediately, don't retry
+                return data; 
+            }
+
+            return data;
+        } catch (error) {
+            // Check if it's the last retry
+            if (i === retries - 1) {
+                console.error(`API Error (${action}) after ${retries} attempts:`, error);
+                throw error;
+            }
+            
+            // Wait with exponential backoff + jitter before retrying
+            // e.g. 1000ms -> 2000ms -> 4000ms (with small random jitter)
+            const jitter = Math.random() * 200;
+            const waitTime = (backoff * Math.pow(2, i)) + jitter;
+            console.warn(`Attempt ${i + 1} failed. Retrying in ${Math.round(waitTime)}ms...`);
+            await sleep(waitTime);
+        }
     }
 };
 
 export const fetchData = async (): Promise<AppData> => {
-    const res = await apiRequest('getInitData');
+    // Retry fetching init data more aggressively as it's critical
+    const res = await apiRequest('getInitData', {}, 3, 1500);
     if (res.status === 'success') {
         // Compatibility fix: Map 'locations' to 'checkInLocations' if the backend returns the old format
         if (!res.checkInLocations && res.locations) {
@@ -94,7 +123,8 @@ export const deleteActivity = async (id: string) => {
 };
 
 export const performCheckIn = async (data: any) => {
-    return await apiRequest('checkIn', data);
+    // Check-in is high priority, try 3 times
+    return await apiRequest('checkIn', data, 3, 1000);
 };
 
 export const getCheckInLogs = async () => {
@@ -119,11 +149,12 @@ export const updateCheckInSurveyStatus = async (checkInId: string, status: strin
 };
 
 export const uploadImage = async (base64Data: string, filename: string) => {
-    return await apiRequest('uploadFile', { data: base64Data, filename, mimeType: 'image/jpeg' });
+    // Uploads might take time, give it a bit more initial delay on retry
+    return await apiRequest('uploadFile', { data: base64Data, filename, mimeType: 'image/jpeg' }, 2, 2000);
 };
 
 export const uploadFile = async (base64Data: string, filename: string, mimeType: string) => {
-    return await apiRequest('uploadFile', { data: base64Data, filename, mimeType });
+    return await apiRequest('uploadFile', { data: base64Data, filename, mimeType }, 2, 2000);
 };
 
 // Alias for uploadImage as used in some components

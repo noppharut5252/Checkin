@@ -296,10 +296,12 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
         setAlertMessage({ type: 'loading', text: 'กำลังตรวจสอบข้อมูล...' });
 
         const reader = new FileReader();
-        reader.onload = async (evt) => {
+        reader.onload = async () => {
             try {
-                let text = evt.target?.result as string;
-                if (text.charCodeAt(0) === 0xFEFF) text = text.substr(1);
+                let text = reader.result as string;
+                if (!text) return;
+                
+                if (text.charCodeAt(0) === 0xFEFF) text = text.substring(1);
 
                 // Simple Parser (Can reuse the robust one from previous iteration if preferred)
                 // Using Robust Parser Logic for Safety
@@ -334,8 +336,10 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                 let updateCount = 0;
                 let createCount = 0;
 
-                // Existing Map for quick lookup
-                const existingMap = new Map(data.checkInActivities.map(a => [a.Name.toLowerCase().trim(), a]));
+                // Existing Map for quick lookup - Explicitly typed to fix inference issues
+                const existingMap = new Map<string, CheckInActivity>(
+                    data.checkInActivities.map(a => [a.Name.toLowerCase().trim(), a] as [string, CheckInActivity])
+                );
 
                 // Skip header (i=1)
                 for (let i = 1; i < validRows.length; i++) {
@@ -838,16 +842,17 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                 {getStatusModalContent(statusModal.nextStatus)}
             </ConfirmationModal>
 
-            {/* Bulk Status Modal */}
+            {/* Bulk Status Change Modal */}
             <ConfirmationModal
                 isOpen={bulkStatusModal.isOpen}
-                title={`เปลี่ยนสถานะ ${selectedIds.size} รายการ`}
-                description=""
-                confirmLabel="ยืนยันการเปลี่ยนสถานะกลุ่ม"
+                title={`ยืนยันการเปลี่ยนสถานะ ${selectedIds.size} รายการ`}
+                description="คุณต้องการเปลี่ยนสถานะกิจกรรมที่เลือกทั้งหมดใช่หรือไม่?"
+                confirmLabel="ยืนยัน"
                 confirmColor={bulkStatusModal.status === 'OPEN' ? 'green' : bulkStatusModal.status === 'CLOSED' ? 'red' : 'blue'}
                 onConfirm={confirmBulkStatusChange}
                 onCancel={() => setBulkStatusModal({ isOpen: false, status: '' })}
                 isLoading={isProcessingBulk}
+                actionType="updateStatus"
             >
                 {getStatusModalContent(bulkStatusModal.status)}
             </ConfirmationModal>
@@ -857,7 +862,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ data, onDataUpdate, onVie
                 isOpen={bulkDeleteModal}
                 title={`ยืนยันการลบ ${selectedIds.size} รายการ`}
                 description="คุณต้องการลบกิจกรรมที่เลือกทั้งหมดใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้"
-                confirmLabel="ยืนยันลบทั้งหมด"
+                confirmLabel="ลบข้อมูล"
                 confirmColor="red"
                 onConfirm={confirmBulkDelete}
                 onCancel={() => setBulkDeleteModal(false)}

@@ -1,5 +1,6 @@
 
-import { AppData, User, CheckInLocation, CheckInActivity, PassportConfig, Announcement, Venue, CertificateTemplate, School, Team } from '../types';
+// ... existing imports ...
+import { AppData, User, CheckInLocation, CheckInActivity, PassportConfig, Announcement, Venue, CertificateTemplate, School, Team, RedemptionLog } from '../types';
 
 // Replace with your actual Google Apps Script Web App URL
 const API_URL = "https://script.google.com/macros/s/AKfycbxyS_GG5snXmt2YTcMCMMYgfQZmzTynb-esxe8N2NBAdC1uGdIGGnPh7W0PuId4r4OF/exec";
@@ -299,4 +300,14 @@ export const saveJudgeConfig = async (id: string, config: any) => {
 // System
 export const createSampleData = async () => {
     return await apiRequest('createSampleData');
+};
+
+// Passport Redemption
+export const redeemReward = async (userId: string, missionId: string, adminId?: string) => {
+    return await apiRequest('redeemReward', { userId, missionId, adminId });
+};
+
+export const getRedemptions = async (): Promise<RedemptionLog[]> => {
+    const res = await apiRequest('getRedemptions');
+    return res.status === 'success' ? res.redemptions : [];
 };

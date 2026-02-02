@@ -309,6 +309,12 @@ export interface PassportConfig {
     missions: PassportMission[];
 }
 
+export interface RedemptionLog {
+    UserID: string;
+    MissionID: string;
+    Timestamp: string;
+}
+
 export interface JudgeConfig extends CertificateTemplate {
   officeName?: string;
   commandNumber?: string;

@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User, RedemptionLog } from '../../types';
-import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, UserCheck } from 'lucide-react';
+import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, UserCheck, PieChart, TrendingUp } from 'lucide-react';
 import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers, redeemReward, getRedemptions } from '../../services/api';
 import { resizeImage } from '../../services/utils';
 import SearchableSelect from '../SearchableSelect';
 import QRScannerModal from '../QRScannerModal';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, CartesianGrid } from 'recharts';
 
 interface PassportSettingsProps {
     data: AppData;
@@ -28,8 +29,9 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     
     // UI State
     const [viewingStatsFor, setViewingStatsFor] = useState<PassportMission | null>(null);
+    const [showDashboard, setShowDashboard] = useState(false); // New Dashboard State
     const [searchQuery, setSearchQuery] = useState('');
-    const [savingRedemption, setSavingRedemption] = useState<string | null>(null); // UserId being redeemed
+    const [savingRedemption, setSavingRedemption] = useState<string | null>(null); 
     
     // Scanner State
     const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -73,26 +75,33 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         }
     };
 
-    // Load data when opening stats or scanner
+    // Load data when opening stats, scanner, or dashboard
     useEffect(() => {
-        if (viewingStatsFor || isScannerOpen) {
+        if (viewingStatsFor || isScannerOpen || showDashboard) {
             loadData();
         }
-    }, [viewingStatsFor, isScannerOpen]);
+    }, [viewingStatsFor, isScannerOpen, showDashboard]);
 
     // --- Logic: Check Mission Completion ---
     const checkUserCompletion = (userId: string, mission: PassportMission) => {
         const userLogs = allLogs.filter(l => l.UserID === userId);
         
+        // Date Scope Logic
+        const targetLogs = mission.dateScope === 'all_time' 
+            ? userLogs 
+            : userLogs.filter(l => l.Timestamp.startsWith(mission.date));
+
         return mission.requirements.every(req => {
             if (req.type === 'specific_activity') {
-                return userLogs.some(l => String(l.ActivityID) === String(req.targetId));
+                // Specific activity can be from ANY time if scope is all_time, but effectively usually checked once.
+                // However, to be strict with "Date Scope", if it's specific_date, it must be that day.
+                // Exception: `specific_activity` usually implies "Did you ever do this?". 
+                // But if scope is `specific_date`, we strictly check logs from that date.
+                return targetLogs.some(l => String(l.ActivityID) === String(req.targetId));
             } else if (req.type === 'total_count') {
-                const dailyLogs = userLogs.filter(l => l.Timestamp.startsWith(mission.date));
-                return dailyLogs.length >= req.targetValue;
+                return targetLogs.length >= req.targetValue;
             } else if (req.type === 'category_count') {
-                const dailyLogs = userLogs.filter(l => l.Timestamp.startsWith(mission.date));
-                const catLogs = dailyLogs.filter(l => {
+                const catLogs = targetLogs.filter(l => {
                     const act = data.activities.find(a => String(a.id) === String(l.ActivityID));
                     return act?.category === req.targetId;
                 });
@@ -116,6 +125,12 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
         Object.keys(logsByUser).forEach(userId => {
             const userLogs = logsByUser[userId];
+            
+            // Date Scope Logic
+            const targetLogs = mission.dateScope === 'all_time' 
+                ? userLogs 
+                : userLogs.filter(l => l.Timestamp.startsWith(mission.date));
+
             let lastReqTimestamp = 0;
 
             const isComplete = mission.requirements.every(req => {
@@ -123,23 +138,20 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                 let reqTime = 0;
 
                 if (req.type === 'specific_activity') {
-                    const match = userLogs.find(l => String(l.ActivityID) === String(req.targetId));
+                    const match = targetLogs.find(l => String(l.ActivityID) === String(req.targetId));
                     if (match) {
                         satisfied = true;
                         reqTime = new Date(match.Timestamp).getTime();
                     }
                 } else if (req.type === 'total_count') {
-                    const dailyLogs = userLogs.filter(l => l.Timestamp.startsWith(mission.date));
-                    if (dailyLogs.length >= req.targetValue) {
+                    if (targetLogs.length >= req.targetValue) {
                         satisfied = true;
-                        // Approximate completion time
-                        const sorted = dailyLogs.sort((a,b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
+                        const sorted = targetLogs.sort((a,b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
                         const targetLog = sorted[req.targetValue - 1];
                         if (targetLog) reqTime = new Date(targetLog.Timestamp).getTime();
                     }
                 } else if (req.type === 'category_count') {
-                    const dailyLogs = userLogs.filter(l => l.Timestamp.startsWith(mission.date));
-                    const catLogs = dailyLogs.filter(l => {
+                    const catLogs = targetLogs.filter(l => {
                         const act = data.activities.find(a => String(a.id) === String(l.ActivityID));
                         return act?.category === req.targetId;
                     });
@@ -168,6 +180,26 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         // Sort by completion time (newest first)
         return completedUsers.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     };
+
+    // --- Dashboard Data Calculation ---
+    const dashboardStats = useMemo(() => {
+        if (!isDataLoaded) return null;
+        
+        const totalRedemptions = allRedemptions.length;
+        const today = new Date().toISOString().split('T')[0];
+        const todayRedemptions = allRedemptions.filter(r => r.Timestamp.startsWith(today)).length;
+        
+        const missionStats = config.missions.map(m => {
+            const count = allRedemptions.filter(r => r.MissionID === m.id).length;
+            return {
+                name: m.title,
+                count: count,
+                color: m.rewardColor
+            };
+        }).sort((a, b) => b.count - a.count);
+
+        return { totalRedemptions, todayRedemptions, missionStats };
+    }, [allRedemptions, config.missions, isDataLoaded]);
 
     // --- Actions ---
 
@@ -265,10 +297,9 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         }
     };
 
-    // ... (Existing CRUD functions: addMission, updateMission, etc.) ...
-    // Note: Re-implementing them briefly to ensure file completeness
+    // CRUD
     const addMission = () => {
-        const newMission: PassportMission = { id: `m-${Date.now()}`, date: new Date().toISOString().split('T')[0], title: 'ภารกิจใหม่', requirements: [], rewardColor: '#F59E0B', rewardLabel: 'Completed' };
+        const newMission: PassportMission = { id: `m-${Date.now()}`, date: new Date().toISOString().split('T')[0], title: 'ภารกิจใหม่', requirements: [], rewardColor: '#F59E0B', rewardLabel: 'Completed', dateScope: 'specific_date' };
         setConfig(prev => ({ missions: [...prev.missions, newMission] }));
         setActiveMissionId(newMission.id);
     };
@@ -403,8 +434,6 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         
         const completedUsers = getCompletedUsers(viewingStatsFor);
         const themeColor = viewingStatsFor.rewardColor || '#F59E0B';
-        
-        // Filter users based on search
         const filteredUsers = completedUsers.filter(u => {
             const term = searchQuery.toLowerCase();
             return (
@@ -480,7 +509,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                                     {new Date(u.timestamp).toLocaleTimeString('th-TH')}
                                                     <Clock className="w-3 h-3 ml-1 text-gray-300"/>
                                                 </div>
-                                                <div className="text-[10px] text-gray-400">
+                                                <div className="text-xs text-gray-400">
                                                     {new Date(u.timestamp).toLocaleDateString('th-TH')}
                                                 </div>
                                             </td>
@@ -523,6 +552,101 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         );
     };
 
+    // --- Render Dashboard Modal ---
+    const renderDashboardModal = () => {
+        if (!showDashboard || !dashboardStats) return null;
+
+        return (
+            <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+                <div className="bg-white rounded-2xl w-full max-w-5xl flex flex-col max-h-[90vh] shadow-2xl overflow-hidden">
+                    <div className="p-6 bg-gradient-to-r from-blue-600 to-indigo-600 border-b border-gray-100 flex justify-between items-center text-white shrink-0">
+                        <div>
+                            <h3 className="font-bold text-xl flex items-center">
+                                <BarChart3 className="w-6 h-6 mr-3"/>
+                                Redemption Overview
+                            </h3>
+                            <p className="text-sm opacity-80 mt-1">ภาพรวมการแจกรางวัลทั้งหมด</p>
+                        </div>
+                        <button onClick={() => setShowDashboard(false)} className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors">
+                            <X className="w-6 h-6"/>
+                        </button>
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+                        {/* Summary Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center">
+                                <div className="p-4 bg-blue-100 text-blue-600 rounded-full mr-4">
+                                    <Gift className="w-8 h-8"/>
+                                </div>
+                                <div>
+                                    <p className="text-gray-500 text-sm font-bold uppercase">รางวัลที่แจกไปแล้วทั้งหมด</p>
+                                    <h2 className="text-4xl font-black text-gray-800">{dashboardStats.totalRedemptions.toLocaleString()}</h2>
+                                </div>
+                            </div>
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center">
+                                <div className="p-4 bg-green-100 text-green-600 rounded-full mr-4">
+                                    <TrendingUp className="w-8 h-8"/>
+                                </div>
+                                <div>
+                                    <p className="text-gray-500 text-sm font-bold uppercase">แจกวันนี้</p>
+                                    <h2 className="text-4xl font-black text-gray-800">{dashboardStats.todayRedemptions.toLocaleString()}</h2>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Chart Area */}
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                            <h4 className="font-bold text-gray-800 mb-6 flex items-center">
+                                <PieChart className="w-5 h-5 mr-2 text-indigo-500"/>
+                                สถิติแยกตามภารกิจ
+                            </h4>
+                            <div className="h-[300px] w-full mb-6">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={dashboardStats.missionStats} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                                        <XAxis type="number" hide />
+                                        <YAxis dataKey="name" type="category" width={150} tick={{fontSize: 12}} />
+                                        <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+                                        <Bar dataKey="count" fill="#4F46E5" radius={[0, 4, 4, 0]} barSize={20}>
+                                            {dashboardStats.missionStats.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={entry.color || '#4F46E5'} />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                            
+                            {/* Table Breakdown */}
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full text-sm">
+                                    <thead className="bg-gray-50 text-gray-500 uppercase font-bold text-xs">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left">ภารกิจ</th>
+                                            <th className="px-4 py-3 text-right">จำนวนที่แจก</th>
+                                            <th className="px-4 py-3 text-right">สัดส่วน</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {dashboardStats.missionStats.map((stat, idx) => (
+                                            <tr key={idx}>
+                                                <td className="px-4 py-3 font-medium text-gray-700">{stat.name}</td>
+                                                <td className="px-4 py-3 text-right font-bold">{stat.count}</td>
+                                                <td className="px-4 py-3 text-right text-gray-500">
+                                                    {dashboardStats.totalRedemptions > 0 ? ((stat.count / dashboardStats.totalRedemptions) * 100).toFixed(1) : 0}%
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-6 relative">
             
@@ -537,9 +661,11 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
             {/* Modals */}
             {renderStatsModal()}
+            {renderDashboardModal()}
             <QRScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScan={handleScanResult} />
             <VerificationModal />
 
+            {/* Top Action Bar */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h2 className="text-xl font-bold text-gray-800 flex items-center">
@@ -547,7 +673,14 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                     </h2>
                     <p className="text-gray-500 text-sm">กำหนดเงื่อนไขการผ่านด่านและการรับตราประทับในแต่ละวัน</p>
                 </div>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap gap-2">
+                    <button 
+                        onClick={() => setShowDashboard(true)} 
+                        className="px-4 py-2.5 bg-blue-50 text-blue-700 rounded-lg font-bold flex items-center hover:bg-blue-100 border border-blue-200 transition-all active:scale-95"
+                    >
+                        <BarChart3 className="w-5 h-5 mr-2" />
+                        ภาพรวม (Dashboard)
+                    </button>
                     <button 
                         onClick={() => setIsScannerOpen(true)} 
                         className="px-6 py-2.5 bg-green-600 text-white rounded-lg font-bold flex items-center hover:bg-green-700 shadow-md transition-all active:scale-95"
@@ -672,6 +805,21 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                 </div>
                             </div>
                             
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">ขอบเขตเวลา (Time Scope)</label>
+                                <select 
+                                    className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                    value={activeMission.dateScope || 'specific_date'}
+                                    onChange={e => updateMission(activeMission.id, 'dateScope', e.target.value)}
+                                >
+                                    <option value="specific_date">เฉพาะวันที่กำหนด (ต้องเช็คอินในวันนั้นๆ เท่านั้น)</option>
+                                    <option value="all_time">สะสมรวมทุกวัน (นับยอดเช็คอินตั้งแต่อดีตถึงปัจจุบัน)</option>
+                                </select>
+                                <p className="text-[10px] text-gray-400 mt-1">
+                                    * หากเลือก "สะสมรวมทุกวัน" ระบบจะนับจำนวนการเข้าร่วมกิจกรรมทั้งหมดของผู้ใช้ โดยไม่สนวันที่เช็คอิน
+                                </p>
+                            </div>
+
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 mb-1">รายละเอียด / คำอธิบาย (รองรับการขึ้นบรรทัดใหม่)</label>
                                 <textarea 

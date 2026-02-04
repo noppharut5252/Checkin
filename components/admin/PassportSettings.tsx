@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User, RedemptionLog } from '../../types';
-import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, UserCheck, PieChart, TrendingUp } from 'lucide-react';
+import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, Eye, EyeOff, LayoutList, Split, TrendingUp, PieChart } from 'lucide-react';
 import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers, redeemReward, getRedemptions } from '../../services/api';
 import { resizeImage } from '../../services/utils';
 import SearchableSelect from '../SearchableSelect';
@@ -36,7 +35,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     // Scanner State
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [verifyResult, setVerifyResult] = useState<{
-        status: 'valid' | 'invalid' | 'redeemed' | 'not_completed';
+        status: 'valid' | 'invalid' | 'redeemed' | 'not_completed' | 'out_of_stock';
         user?: User;
         mission?: PassportMission;
         redemption?: RedemptionLog;
@@ -91,12 +90,12 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
             ? userLogs 
             : userLogs.filter(l => l.Timestamp.startsWith(mission.date));
 
-        return mission.requirements.every(req => {
+        // Logic AND/OR
+        const logic = mission.conditionLogic || 'AND';
+
+        // Check individual requirements
+        const results = mission.requirements.map(req => {
             if (req.type === 'specific_activity') {
-                // Specific activity can be from ANY time if scope is all_time, but effectively usually checked once.
-                // However, to be strict with "Date Scope", if it's specific_date, it must be that day.
-                // Exception: `specific_activity` usually implies "Did you ever do this?". 
-                // But if scope is `specific_date`, we strictly check logs from that date.
                 return targetLogs.some(l => String(l.ActivityID) === String(req.targetId));
             } else if (req.type === 'total_count') {
                 return targetLogs.length >= req.targetValue;
@@ -109,6 +108,14 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
             }
             return false;
         });
+
+        if (logic === 'OR') {
+            // Match Any
+            return results.some(r => r === true);
+        } else {
+            // Match All (Default)
+            return results.every(r => r === true);
+        }
     };
 
     // --- Logic: Get List of Completed Users (Batch) ---
@@ -122,6 +129,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         });
 
         const completedUsers: { user: User | undefined, userId: string, timestamp: string }[] = [];
+        const logic = mission.conditionLogic || 'AND';
 
         Object.keys(logsByUser).forEach(userId => {
             const userLogs = logsByUser[userId];
@@ -132,8 +140,9 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                 : userLogs.filter(l => l.Timestamp.startsWith(mission.date));
 
             let lastReqTimestamp = 0;
+            let satisfiedCount = 0;
 
-            const isComplete = mission.requirements.every(req => {
+            mission.requirements.forEach(req => {
                 let satisfied = false;
                 let reqTime = 0;
 
@@ -163,9 +172,15 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                     }
                 }
 
-                if (reqTime > lastReqTimestamp) lastReqTimestamp = reqTime;
-                return satisfied;
+                if (satisfied) {
+                    satisfiedCount++;
+                    if (reqTime > lastReqTimestamp) lastReqTimestamp = reqTime;
+                }
             });
+
+            const isComplete = logic === 'OR' 
+                ? satisfiedCount > 0 
+                : satisfiedCount === mission.requirements.length;
 
             if (isComplete) {
                 const userInfo = allUsers.find(u => u.UserID === userId);
@@ -222,6 +237,15 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         }
 
         const user = allUsers.find(u => u.UserID === userId) || { UserID: userId, Name: 'Unknown User', Role: 'Guest' } as User;
+
+        // Check Inventory (Global Cap)
+        if (mission.maxRedemptions && mission.maxRedemptions > 0) {
+            const currentRedeemed = allRedemptions.filter(r => r.MissionID === missionId).length;
+            if (currentRedeemed >= mission.maxRedemptions) {
+                setVerifyResult({ status: 'out_of_stock', user, mission, message: 'ของรางวัลหมดแล้ว (Out of Stock)' });
+                return;
+            }
+        }
 
         // Check if already redeemed
         const existingRedemption = allRedemptions.find(r => r.UserID === userId && r.MissionID === missionId);
@@ -299,7 +323,18 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
     // CRUD
     const addMission = () => {
-        const newMission: PassportMission = { id: `m-${Date.now()}`, date: new Date().toISOString().split('T')[0], title: 'ภารกิจใหม่', requirements: [], rewardColor: '#F59E0B', rewardLabel: 'Completed', dateScope: 'specific_date' };
+        const newMission: PassportMission = { 
+            id: `m-${Date.now()}`, 
+            date: new Date().toISOString().split('T')[0], 
+            title: 'ภารกิจใหม่', 
+            requirements: [], 
+            rewardColor: '#F59E0B', 
+            rewardLabel: 'Completed', 
+            dateScope: 'specific_date',
+            isVisible: true,
+            conditionLogic: 'AND',
+            maxRedemptions: 0
+        };
         setConfig(prev => ({ missions: [...prev.missions, newMission] }));
         setActiveMissionId(newMission.id);
     };
@@ -366,8 +401,14 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         if (!verifyResult) return null;
         
         const { status, user, mission, redemption, message } = verifyResult;
-        const color = status === 'valid' ? 'green' : status === 'redeemed' ? 'blue' : 'red';
-        const Icon = status === 'valid' ? CheckCircle : status === 'redeemed' ? Check : AlertTriangle;
+        let color = 'blue';
+        let Icon = AlertTriangle;
+        let title = 'ตรวจสอบ';
+
+        if (status === 'valid') { color = 'green'; Icon = CheckCircle; title = 'พร้อมแจกรางวัล'; }
+        else if (status === 'redeemed') { color = 'blue'; Icon = Check; title = 'รับไปแล้ว'; }
+        else if (status === 'out_of_stock') { color = 'purple'; Icon = X; title = 'ของรางวัลหมด'; }
+        else { color = 'red'; Icon = AlertTriangle; title = 'ไม่สามารถแจกได้'; }
 
         return (
             <div className="fixed inset-0 z-[400] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
@@ -378,12 +419,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                         <div className="bg-white/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm shadow-inner">
                             <Icon className="w-10 h-10 text-white" />
                         </div>
-                        <h2 className="text-2xl font-bold">
-                            {status === 'valid' && 'พร้อมแจกรางวัล'}
-                            {status === 'redeemed' && 'รับไปแล้ว'}
-                            {status === 'not_completed' && 'เงื่อนไขไม่ครบ'}
-                            {status === 'invalid' && 'QR ไม่ถูกต้อง'}
-                        </h2>
+                        <h2 className="text-2xl font-bold">{title}</h2>
                         {message && <p className="text-white/80 text-sm mt-1">{message}</p>}
                     </div>
 
@@ -495,13 +531,23 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                     return (
                                         <tr key={idx} className="hover:bg-gray-50">
                                             <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm font-bold text-gray-900">{u.user?.Name || u.userId}</div>
-                                                <div className="text-xs text-gray-500">ID: {u.userId}</div>
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden shrink-0 border border-gray-100">
+                                                        <img src={u.user?.PictureUrl || `https://ui-avatars.com/api/?name=${u.user?.Name}`} className="w-full h-full object-cover" />
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-sm font-bold text-gray-900">{u.user?.Name || u.userId}</div>
+                                                        <div className="text-xs text-gray-500">ID: {u.userId}</div>
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <div className="text-sm text-gray-900 flex items-center">
+                                                <div className="text-sm text-gray-900 flex items-center mb-1">
                                                     <SchoolIcon className="w-3 h-3 mr-1 text-gray-400"/>
                                                     {u.user?.SchoolID || '-'}
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                    {u.user?.Role || 'User'}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right">
@@ -710,13 +756,18 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                     </div>
                     <div className="flex-1 overflow-y-auto max-h-[600px] p-2 space-y-2">
                         {config.missions.map((m, idx) => {
-                            const completedList = getCompletedUsers(m);
-                            const statsCount = completedList.length;
+                            // Don't calculate on every render for list, use loading indicator if data isn't ready
+                            let statsCount = 0;
+                            if (isDataLoaded) {
+                                const completedList = getCompletedUsers(m);
+                                statsCount = completedList.length;
+                            }
+                            
                             return (
                                 <div 
                                     key={m.id}
                                     onClick={() => setActiveMissionId(m.id)}
-                                    className={`p-3 rounded-lg border cursor-pointer transition-all flex gap-2 ${activeMissionId === m.id ? 'bg-indigo-50 border-indigo-300 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}
+                                    className={`p-3 rounded-lg border cursor-pointer transition-all flex gap-2 ${activeMissionId === m.id ? 'bg-indigo-50 border-indigo-300 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'} ${m.isVisible === false ? 'opacity-70 grayscale-[0.5]' : ''}`}
                                 >
                                     <div className="flex flex-col gap-1 justify-center">
                                         <button 
@@ -737,7 +788,10 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-start">
                                             <div className="truncate">
-                                                <div className="font-bold text-sm text-gray-800 truncate">{m.title}</div>
+                                                <div className="font-bold text-sm text-gray-800 truncate flex items-center">
+                                                    {m.title}
+                                                    {m.isVisible === false && <EyeOff className="w-3 h-3 ml-2 text-gray-400" />}
+                                                </div>
                                                 <div className="text-xs text-gray-500 flex items-center mt-1">
                                                     <Calendar className="w-3 h-3 mr-1" /> {new Date(m.date).toLocaleDateString('th-TH')}
                                                 </div>
@@ -770,7 +824,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                                 className="text-[10px] text-green-600 font-bold flex items-center bg-green-50 px-2 py-0.5 rounded hover:bg-green-100 transition-colors"
                                             >
                                                 <BarChart3 className="w-3 h-3 mr-1"/>
-                                                {isLoadingStats ? '...' : `${statsCount} สำเร็จ`}
+                                                {isLoadingStats ? <Loader2 className="w-3 h-3 animate-spin" /> : `${statsCount} สำเร็จ`}
                                             </button>
                                         </div>
                                     </div>
@@ -785,6 +839,36 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                 <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                     {activeMission ? (
                         <div className="space-y-6">
+                            {/* Toggle Visibility & Scope */}
+                            <div className="flex justify-between items-start bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                <div className="flex items-center">
+                                    <label className="relative inline-flex items-center cursor-pointer mr-3">
+                                        <input 
+                                            type="checkbox" 
+                                            className="sr-only peer"
+                                            checked={activeMission.isVisible !== false} // Default true
+                                            onChange={e => updateMission(activeMission.id, 'isVisible', e.target.checked)}
+                                        />
+                                        <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                                    </label>
+                                    <span className="text-sm font-bold text-gray-700 flex items-center">
+                                        {activeMission.isVisible !== false ? <Eye className="w-4 h-4 mr-1 text-indigo-600"/> : <EyeOff className="w-4 h-4 mr-1 text-gray-400"/>}
+                                        {activeMission.isVisible !== false ? 'แสดงผลในหน้า User' : 'ซ่อนจาก User'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center">
+                                    <span className="text-xs text-gray-500 mr-2">ขอบเขตเวลา:</span>
+                                    <select 
+                                        className="border rounded p-1 text-xs bg-white focus:ring-1 focus:ring-indigo-500"
+                                        value={activeMission.dateScope || 'specific_date'}
+                                        onChange={e => updateMission(activeMission.id, 'dateScope', e.target.value)}
+                                    >
+                                        <option value="specific_date">เฉพาะวันที่กำหนด</option>
+                                        <option value="all_time">สะสมรวมทุกวัน</option>
+                                    </select>
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 mb-1">ชื่อภารกิจ</label>
@@ -795,7 +879,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-1">วันที่ (Date)</label>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">วันที่ (สำหรับอ้างอิง)</label>
                                     <input 
                                         type="date" 
                                         className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
@@ -803,21 +887,6 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                         onChange={e => updateMission(activeMission.id, 'date', e.target.value)}
                                     />
                                 </div>
-                            </div>
-                            
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1">ขอบเขตเวลา (Time Scope)</label>
-                                <select 
-                                    className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
-                                    value={activeMission.dateScope || 'specific_date'}
-                                    onChange={e => updateMission(activeMission.id, 'dateScope', e.target.value)}
-                                >
-                                    <option value="specific_date">เฉพาะวันที่กำหนด (ต้องเช็คอินในวันนั้นๆ เท่านั้น)</option>
-                                    <option value="all_time">สะสมรวมทุกวัน (นับยอดเช็คอินตั้งแต่อดีตถึงปัจจุบัน)</option>
-                                </select>
-                                <p className="text-[10px] text-gray-400 mt-1">
-                                    * หากเลือก "สะสมรวมทุกวัน" ระบบจะนับจำนวนการเข้าร่วมกิจกรรมทั้งหมดของผู้ใช้ โดยไม่สนวันที่เช็คอิน
-                                </p>
                             </div>
 
                             <div>
@@ -832,9 +901,19 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
                             <div className="border-t border-gray-100 pt-4">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h4 className="font-bold text-gray-800 flex items-center">
-                                        <ListPlus className="w-5 h-5 mr-2 text-blue-600" /> เงื่อนไขการผ่าน (Requirements)
-                                    </h4>
+                                    <div className="flex items-center gap-3">
+                                        <h4 className="font-bold text-gray-800 flex items-center">
+                                            <ListPlus className="w-5 h-5 mr-2 text-blue-600" /> เงื่อนไขการผ่าน
+                                        </h4>
+                                        <select 
+                                            className="text-xs border rounded p-1 bg-blue-50 text-blue-800 font-bold"
+                                            value={activeMission.conditionLogic || 'AND'}
+                                            onChange={e => updateMission(activeMission.id, 'conditionLogic', e.target.value)}
+                                        >
+                                            <option value="AND">ต้องครบทุกข้อ (AND)</option>
+                                            <option value="OR">ทำข้อใดข้อหนึ่ง (OR)</option>
+                                        </select>
+                                    </div>
                                     <button onClick={() => addRequirement(activeMission.id)} className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-bold hover:bg-blue-100">
                                         + เพิ่มเงื่อนไข
                                     </button>
@@ -842,7 +921,14 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
                                 <div className="space-y-3">
                                     {activeMission.requirements.map((req, idx) => (
-                                        <div key={req.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200 flex flex-col gap-2">
+                                        <div key={req.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200 flex flex-col gap-2 relative">
+                                            {/* OR Logic Indicator */}
+                                            {idx > 0 && activeMission.conditionLogic === 'OR' && (
+                                                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-blue-100 text-blue-600 text-[10px] font-bold px-2 rounded-full border border-blue-200 z-10">
+                                                    OR
+                                                </div>
+                                            )}
+                                            
                                             <div className="flex items-center gap-2 mb-1">
                                                 {/* Reorder Buttons */}
                                                 <div className="flex flex-col">
@@ -945,7 +1031,18 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-bold text-gray-500 mb-1">Theme Color (สีการ์ดและตราประทับ)</label>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">จำนวนจำกัด (Inventory)</label>
+                                            <input 
+                                                type="number" 
+                                                className="w-full border rounded p-2 text-sm" 
+                                                placeholder="0 = ไม่จำกัด"
+                                                value={activeMission.maxRedemptions || ''} 
+                                                onChange={e => updateMission(activeMission.id, 'maxRedemptions', parseInt(e.target.value) || 0)}
+                                            />
+                                            <p className="text-[10px] text-gray-400 mt-1">หากใส่เลข ระบบจะหยุดแจกเมื่อครบจำนวน</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">Theme Color</label>
                                             <div className="flex items-center gap-2 border p-2 rounded-lg bg-gray-50">
                                                 <input 
                                                     type="color" 

@@ -304,6 +304,10 @@ export interface PassportMission {
     rewardLabel: string; // e.g. "Gold Stamp"
     stampImage?: string; // Optional custom stamp URL
     dateScope?: 'specific_date' | 'all_time'; // Default: specific_date
+    // New Fields
+    maxRedemptions?: number; // 0 or undefined = unlimited
+    isVisible?: boolean; // Default true
+    conditionLogic?: 'AND' | 'OR'; // Default AND
 }
 
 export interface PassportConfig {

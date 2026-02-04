@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppData, User, PassportMission, CheckInLog } from '../types';
-import { Award, Target, ShieldCheck, Lock, Calendar, RefreshCw, X, QrCode, Gift, MapPin, Check, Clock, User as UserIcon, Split, Grid, LayoutList, Share2, Volume2, Star, Zap } from 'lucide-react';
+import { Award, Target, ShieldCheck, Lock, Calendar, RefreshCw, X, QrCode, Gift, MapPin, Check, Clock, User as UserIcon, Split, Grid, LayoutList, Share2, Volume2, Star, Zap, CheckCircle2, Circle } from 'lucide-react';
 import { getUserCheckInHistory } from '../services/api';
 // @ts-ignore
 import confetti from 'canvas-confetti';
@@ -176,9 +176,9 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [data.passportConfig]);
 
-    // Calculate Completion Status Helper
+    // Calculate Completion Status Helper with Detailed Progress
     const calculateStatus = useMemo(() => {
-        const statusMap: Record<string, boolean> = {};
+        const statusMap: Record<string, { isComplete: boolean, current: number, total: number, progressPercent: number, details: any[] }> = {};
         let completedCount = 0;
 
         missions.forEach(m => {
@@ -187,26 +187,60 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                 targetLogs = userLogs.filter(l => l.Timestamp && l.Timestamp.startsWith(m.date));
             }
 
-            // Simple check logic (reusing detailed logic concept but simplified for summary)
+            // Logic calculation
             let passedCount = 0;
             const logic = m.conditionLogic || 'AND';
-
-            m.requirements.forEach(req => {
+            let totalPossibleProgress = 0;
+            let currentTotalProgress = 0;
+            
+            const reqDetails = m.requirements.map(req => {
                 let hit = false;
-                if (req.type === 'specific_activity') hit = targetLogs.some(l => String(l.ActivityID) === String(req.targetId));
-                else if (req.type === 'total_count') hit = targetLogs.length >= req.targetValue;
-                else if (req.type === 'category_count') {
+                let currentVal = 0;
+                let targetVal = req.targetValue || 1;
+
+                if (req.type === 'specific_activity') {
+                    hit = targetLogs.some(l => String(l.ActivityID) === String(req.targetId));
+                    currentVal = hit ? 1 : 0;
+                } else if (req.type === 'total_count') {
+                    currentVal = Math.min(targetLogs.length, targetVal);
+                    hit = currentVal >= targetVal;
+                } else if (req.type === 'category_count') {
                     const catLogs = targetLogs.filter(l => {
                         const act = data.activities.find(a => String(a.id) === String(l.ActivityID));
                         return act?.category === req.targetId;
                     });
-                    hit = catLogs.length >= req.targetValue;
+                    currentVal = Math.min(catLogs.length, targetVal);
+                    hit = currentVal >= targetVal;
                 }
+                
                 if (hit) passedCount++;
+                
+                // For overall progress bar
+                totalPossibleProgress += targetVal;
+                currentTotalProgress += currentVal;
+
+                return { ...req, hit, currentVal, targetVal };
             });
 
             const isComplete = logic === 'OR' ? passedCount > 0 : passedCount === m.requirements.length && m.requirements.length > 0;
-            statusMap[m.id] = isComplete;
+            
+            // Adjust progress for OR logic: if any is 100%, total is 100%
+            let progressPercent = 0;
+            if (logic === 'OR') {
+                const maxReqProgress = Math.max(...reqDetails.map(r => r.currentVal / r.targetVal));
+                progressPercent = Math.round(maxReqProgress * 100);
+            } else {
+                progressPercent = totalPossibleProgress > 0 ? Math.round((currentTotalProgress / totalPossibleProgress) * 100) : 0;
+            }
+
+            statusMap[m.id] = {
+                isComplete,
+                current: currentTotalProgress,
+                total: totalPossibleProgress,
+                progressPercent,
+                details: reqDetails
+            };
+
             if (isComplete) completedCount++;
         });
 
@@ -385,8 +419,10 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                 {viewMode === 'list' ? (
                     <div className="space-y-6">
                         {missions.map((mission, idx) => {
-                            const isComplete = calculateStatus.map[mission.id];
+                            const statusData = calculateStatus.map[mission.id];
+                            const isComplete = statusData.isComplete;
                             const cardColor = mission.rewardColor || '#F59E0B';
+                            const percent = statusData.progressPercent;
                             
                             return (
                                 <div 
@@ -424,6 +460,38 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                     <div className="p-5">
                                         {mission.description && <p className="text-sm text-gray-600 mb-4 font-handwriting">{mission.description}</p>}
                                         
+                                        {/* --- PROGRESS BAR SECTION --- */}
+                                        <div className="mb-4">
+                                            <div className="flex justify-between text-xs font-bold text-gray-600 mb-1">
+                                                <span>Progress</span>
+                                                <span>{percent}%</span>
+                                            </div>
+                                            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                                <div 
+                                                    className="h-full rounded-full transition-all duration-500 ease-out"
+                                                    style={{ 
+                                                        width: `${percent}%`,
+                                                        backgroundColor: isComplete ? '#22c55e' : cardColor 
+                                                    }}
+                                                ></div>
+                                            </div>
+                                            
+                                            {/* Requirements Checklist (Only if not single generic 100%) */}
+                                            {statusData.details.length > 0 && (
+                                                <div className="mt-3 space-y-1">
+                                                    {statusData.details.map((req: any, i: number) => (
+                                                        <div key={i} className="flex items-center text-xs text-gray-500">
+                                                            {req.hit ? <CheckCircle2 className="w-3 h-3 text-green-500 mr-2" /> : <Circle className="w-3 h-3 text-gray-300 mr-2" />}
+                                                            <span className={req.hit ? 'text-gray-700 font-medium' : ''}>
+                                                                {req.label || (req.type === 'specific_activity' ? 'เข้าร่วมกิจกรรม' : 'สะสมแต้ม')} 
+                                                                <span className="opacity-70 ml-1">({req.currentVal}/{req.targetVal})</span>
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
                                         <div className="flex items-center justify-between mt-4">
                                             <div className="flex items-center text-sm font-bold text-gray-700">
                                                 <Gift className="w-4 h-4 mr-2 text-orange-500" />
@@ -446,7 +514,7 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                 ) : (
                     <div className="grid grid-cols-3 gap-3 animate-in zoom-in duration-300">
                         {missions.map((mission, idx) => {
-                            const isComplete = calculateStatus.map[mission.id];
+                            const isComplete = calculateStatus.map[mission.id].isComplete;
                             const cardColor = mission.rewardColor || '#F59E0B';
                             
                             return (

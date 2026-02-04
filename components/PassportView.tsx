@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppData, User, PassportMission, CheckInLog } from '../types';
-import { Award, Target, ShieldCheck, Lock, Calendar, RefreshCw, X, QrCode, Gift, MapPin, Check, Clock, User as UserIcon } from 'lucide-react';
+import { Award, Target, ShieldCheck, Lock, Calendar, RefreshCw, X, QrCode, Gift, MapPin, Check, Clock, User as UserIcon, Split } from 'lucide-react';
 import { getUserCheckInHistory } from '../services/api';
 // @ts-ignore
 import confetti from 'canvas-confetti';
@@ -145,7 +145,9 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
     const missionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
     const missions = useMemo(() => {
-        return (data.passportConfig?.missions || []).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        return (data.passportConfig?.missions || [])
+            .filter(m => m.isVisible !== false) // Filter Hidden Missions
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [data.passportConfig]);
 
     const fetchLogs = async () => {
@@ -256,7 +258,17 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
             return { ...req, achieved, currentVal };
         });
 
-        const isComplete = completedReqs === mission.requirements.length && mission.requirements.length > 0;
+        // 3. Logic: AND vs OR
+        const logic = mission.conditionLogic || 'AND';
+        let isComplete = false;
+        
+        if (logic === 'OR') {
+            // Match ANY requirement
+            isComplete = completedReqs > 0;
+        } else {
+            // Match ALL (Default)
+            isComplete = completedReqs === mission.requirements.length && mission.requirements.length > 0;
+        }
         
         return {
             progress: completedReqs,
@@ -367,6 +379,7 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                     const isToday = new Date(mission.date).toDateString() === new Date().toDateString();
                     // Fallback color if undefined
                     const cardColor = mission.rewardColor || '#F59E0B'; 
+                    const isOR = mission.conditionLogic === 'OR';
 
                     return (
                         <div 
@@ -409,6 +422,15 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                     </div>
                                 )}
 
+                                {/* Condition Logic Badge */}
+                                {isOR && (
+                                    <div className="mb-4 flex justify-center">
+                                        <span className="text-xs font-bold bg-blue-100 text-blue-700 px-3 py-1 rounded-full border border-blue-200 flex items-center shadow-sm">
+                                            <Split className="w-3 h-3 mr-1" /> ทำข้อใดข้อหนึ่งก็ได้ (Match Any)
+                                        </span>
+                                    </div>
+                                )}
+
                                 {/* Requirements List */}
                                 <div className="space-y-4 relative z-10">
                                     {status.reqStatus.map((req, rIdx) => (
@@ -420,8 +442,8 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
                                                 >
                                                     {req.achieved ? <Check className="w-5 h-5" /> : (rIdx + 1)}
                                                 </div>
-                                                {/* Connecting Line */}
-                                                {rIdx < status.reqStatus.length - 1 && (
+                                                {/* Connecting Line - Only if AND logic */}
+                                                {!isOR && rIdx < status.reqStatus.length - 1 && (
                                                     <div className="absolute top-8 left-1/2 w-0.5 h-6 -ml-px bg-gray-200">
                                                         {req.achieved && status.reqStatus[rIdx+1].achieved && (
                                                             <div className="w-full h-full" style={{ backgroundColor: cardColor + '80' }}></div>

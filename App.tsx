@@ -24,6 +24,7 @@ import SummaryGenerator from './components/SummaryGenerator';
 import UserManagement from './components/UserManagement';
 import AnnouncementsView from './components/AnnouncementsView';
 import PassportView from './components/PassportView';
+import InstallGuideView from './components/InstallGuideView';
 
 // --- Improved Redirect Handler ---
 // Handles the navigation logic safely inside the Router context
@@ -112,7 +113,8 @@ const App: React.FC = () => {
               currentHash !== '#/' && 
               currentHash !== '#/home' && 
               !currentHash.startsWith('#/login') &&
-              !currentHash.startsWith('#/profile')
+              !currentHash.startsWith('#/profile') &&
+              !currentHash.startsWith('#/install-guide')
           ) {
               const cleanPath = currentHash.substring(1); // Remove '#'
               console.log("Deep link detected on boot:", cleanPath);
@@ -427,6 +429,7 @@ const App: React.FC = () => {
             <Route path="/idcards" element={<Layout userProfile={user} data={data}><DocumentsView data={data} type="idcard" user={user} /></Layout>} />
             <Route path="/share-result" element={<PublicResultView data={data} />} />
             <Route path="/summary" element={<Layout userProfile={user} data={data}><SummaryGenerator data={data} user={user} /></Layout>} />
+            <Route path="/install-guide" element={<InstallGuideView />} />
 
             <Route path="/login" element={
                 isRegistering ? <Navigate to="/profile" replace /> : <LoginScreen onLoginSuccess={handleLogin} />

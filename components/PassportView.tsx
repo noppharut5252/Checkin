@@ -96,6 +96,72 @@ const playSound = (type: 'success' | 'stamp' | 'click') => {
     } catch(e){}
 };
 
+// --- Skeleton Component ---
+const PassportSkeleton = () => {
+    return (
+        <div className="pb-24 space-y-6 font-kanit min-h-screen bg-[#f3f4f6] animate-pulse">
+            {/* Header Level & Progress */}
+            <div className="bg-gray-300 h-80 rounded-b-[40px] relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-8 opacity-10">
+                    <div className="w-64 h-64 bg-gray-400 rounded-full"></div>
+                </div>
+                <div className="relative z-10 flex flex-col items-center text-center mt-8 space-y-4">
+                    <div className="w-24 h-24 bg-gray-400 rounded-full"></div>
+                    <div className="h-8 w-48 bg-gray-400 rounded-lg"></div>
+                    <div className="h-6 w-32 bg-gray-400 rounded-full"></div>
+                    
+                    <div className="w-64 mt-6 space-y-2">
+                        <div className="flex justify-between">
+                            <div className="h-3 w-16 bg-gray-400 rounded"></div>
+                            <div className="h-3 w-8 bg-gray-400 rounded"></div>
+                        </div>
+                        <div className="h-3 bg-gray-400 rounded-full w-full"></div>
+                        <div className="h-3 w-40 bg-gray-400 rounded mx-auto mt-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Toggle View */}
+            <div className="-mt-10 px-6 relative z-20 flex justify-center mb-4">
+                <div className="bg-white p-1 rounded-xl shadow-lg flex w-48 h-12">
+                    <div className="flex-1 bg-gray-200 rounded-lg m-1"></div>
+                    <div className="flex-1 m-1"></div>
+                </div>
+            </div>
+
+            {/* Cards List */}
+            <div className="px-4 space-y-6">
+                {[1, 2, 3].map((i) => (
+                    <div key={i} className="bg-white rounded-2xl h-64 border-2 border-gray-200 p-4 flex flex-col justify-between">
+                        <div className="flex justify-between items-center border-b border-dashed border-gray-200 pb-4">
+                            <div className="space-y-2">
+                                <div className="h-5 w-48 bg-gray-200 rounded"></div>
+                                <div className="h-3 w-24 bg-gray-200 rounded"></div>
+                            </div>
+                            <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
+                        </div>
+                        <div className="space-y-3">
+                            <div className="h-3 w-full bg-gray-200 rounded"></div>
+                            <div className="h-3 w-3/4 bg-gray-200 rounded"></div>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex justify-between">
+                                <div className="h-3 w-16 bg-gray-200 rounded"></div>
+                                <div className="h-3 w-8 bg-gray-200 rounded"></div>
+                            </div>
+                            <div className="h-2 w-full bg-gray-200 rounded-full"></div>
+                        </div>
+                        <div className="flex justify-between items-center pt-2">
+                            <div className="h-4 w-24 bg-gray-200 rounded"></div>
+                            <div className="h-8 w-24 bg-gray-200 rounded-full"></div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 // --- Redemption Modal ---
 const RedemptionModal = ({ isOpen, onClose, mission, user }: { isOpen: boolean, onClose: () => void, mission: PassportMission, user: User }) => {
     const [qrSrc, setQrSrc] = useState('');
@@ -269,7 +335,8 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
         const init = async () => {
             setLoading(true);
             await fetchLogs();
-            setLoading(false);
+            // Artificial delay for smooth transition
+            setTimeout(() => setLoading(false), 600);
         };
         init();
     }, [user.userid]);
@@ -319,12 +386,7 @@ const PassportView: React.FC<PassportViewProps> = ({ data, user }) => {
     };
 
     if (loading) {
-        return (
-            <div className="flex flex-col items-center justify-center h-[60vh] text-gray-400">
-                <RefreshCw className="w-12 h-12 animate-spin mb-4 text-indigo-300" />
-                <p>Loading Passport...</p>
-            </div>
-        );
+        return <PassportSkeleton />;
     }
 
     // --- Render ---

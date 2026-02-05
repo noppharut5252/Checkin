@@ -1,6 +1,6 @@
 
-import React, { useEffect, useRef, useState } from 'react';
-import { X, Camera, RefreshCw } from 'lucide-react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { X, Camera, RefreshCw, AlertTriangle, Settings } from 'lucide-react';
 import jsQR from 'jsqr';
 
 interface QRScannerModalProps {
@@ -15,48 +15,68 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({ isOpen, onClose, onScan
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const requestRef = useRef<number>(0);
+    const streamRef = useRef<MediaStream | null>(null);
 
-    useEffect(() => {
-        if (!isOpen) return;
+    const startCamera = useCallback(async () => {
+        try {
+            setLoading(true);
+            setError('');
+            
+            // Stop previous stream if exists
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+            }
 
-        let stream: MediaStream | null = null;
+            // Request camera with preference for back camera
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment" } 
+            });
 
-        const startCamera = async () => {
-            try {
-                setLoading(true);
-                setError('');
-                
-                // Request camera with preference for back camera
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment" } 
-                });
+            streamRef.current = stream;
 
-                if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
-                    // Wait for video to be ready
-                    videoRef.current.setAttribute("playsinline", "true"); // required to tell iOS safari we don't want fullscreen
-                    await videoRef.current.play();
-                    requestRef.current = requestAnimationFrame(tick);
-                    setLoading(false);
-                }
-            } catch (err) {
-                console.error("Camera Error:", err);
-                setError('ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้องใน Browser');
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+                // Wait for video to be ready
+                videoRef.current.setAttribute("playsinline", "true"); // required to tell iOS safari we don't want fullscreen
+                await videoRef.current.play();
+                requestRef.current = requestAnimationFrame(tick);
                 setLoading(false);
             }
-        };
+        } catch (err: any) {
+            console.error("Camera Error:", err);
+            setLoading(false);
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                setError('กรุณากดปุ่มด้านล่างเพื่ออนุญาตให้เข้าถึงกล้อง');
+            } else {
+                setError('ไม่สามารถเปิดกล้องได้ กรุณาลองใหม่อีกครั้ง');
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen) {
+            // Cleanup when modal closes
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+                streamRef.current = null;
+            }
+            if (requestRef.current) {
+                cancelAnimationFrame(requestRef.current);
+            }
+            return;
+        }
 
         startCamera();
 
         return () => {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
             }
             if (requestRef.current) {
                 cancelAnimationFrame(requestRef.current);
             }
         };
-    }, [isOpen]);
+    }, [isOpen, startCamera]);
 
     const tick = () => {
         if (videoRef.current && canvasRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
@@ -91,14 +111,16 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({ isOpen, onClose, onScan
 
     return (
         <div className="fixed inset-0 z-[200] bg-black flex flex-col items-center justify-center animate-in fade-in">
-            {/* Header */}
-            <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent text-white">
-                <h3 className="text-lg font-bold flex items-center">
-                    <Camera className="w-5 h-5 mr-2" /> สแกน QR Code
-                </h3>
-                <button onClick={onClose} className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors">
-                    <X className="w-6 h-6" />
-                </button>
+            {/* Header with Safe Area Padding */}
+            <div className="absolute top-0 left-0 right-0 pt-safe z-20 pointer-events-none">
+                <div className="p-4 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent text-white pointer-events-auto">
+                    <h3 className="text-lg font-bold flex items-center drop-shadow-md">
+                        <Camera className="w-5 h-5 mr-2" /> สแกน QR Code
+                    </h3>
+                    <button onClick={onClose} className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors backdrop-blur-sm">
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
             </div>
 
             {/* Camera Area */}
@@ -113,13 +135,26 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({ isOpen, onClose, onScan
                 )}
                 
                 {error ? (
-                    <div className="text-white text-center p-6 max-w-sm">
-                        <div className="bg-red-500/20 p-4 rounded-xl border border-red-500/50 mb-4">
-                            <X className="w-10 h-10 mx-auto text-red-500 mb-2" />
-                            <p>{error}</p>
+                    <div className="text-white text-center p-6 max-w-sm z-10 px-4 w-full">
+                        <div className="bg-red-500/20 p-6 rounded-2xl border border-red-500/50 mb-6 backdrop-blur-sm shadow-xl">
+                            <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <AlertTriangle className="w-8 h-8 text-red-500" />
+                            </div>
+                            <h4 className="font-bold text-lg mb-2">ไม่สามารถเข้าถึงกล้อง</h4>
+                            <p className="text-sm opacity-90 mb-6">{error}</p>
+                            
+                            {/* Retry / Request Permission Button */}
+                            <button 
+                                onClick={startCamera}
+                                className="w-full py-3 bg-white text-red-600 rounded-xl font-bold flex items-center justify-center active:scale-95 transition-transform hover:bg-gray-100"
+                            >
+                                <Settings className="w-4 h-4 mr-2" />
+                                ขออนุญาต / ลองใหม่
+                            </button>
                         </div>
-                        <button onClick={onClose} className="px-6 py-2 bg-white text-black rounded-full font-bold">
-                            ปิด
+                        
+                        <button onClick={onClose} className="text-gray-400 hover:text-white underline text-sm">
+                            ปิดหน้าต่าง
                         </button>
                     </div>
                 ) : (
@@ -129,7 +164,7 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({ isOpen, onClose, onScan
                         
                         {/* Overlay Frame */}
                         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                            <div className="w-64 h-64 border-2 border-blue-500 rounded-3xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
+                            <div className="w-64 h-64 border-2 border-blue-500 rounded-3xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.6)]">
                                 <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-blue-400 -mt-1 -ml-1 rounded-tl-lg"></div>
                                 <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-blue-400 -mt-1 -mr-1 rounded-tr-lg"></div>
                                 <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-blue-400 -mb-1 -ml-1 rounded-bl-lg"></div>
@@ -147,7 +182,7 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({ isOpen, onClose, onScan
                                 `}</style>
                             </div>
                         </div>
-                        <div className="absolute bottom-20 text-white text-center text-sm bg-black/40 px-4 py-2 rounded-full backdrop-blur-md">
+                        <div className="absolute bottom-20 text-white text-center text-sm bg-black/40 px-4 py-2 rounded-full backdrop-blur-md pb-safe mb-4">
                             ส่องไปที่ QR Code ของกิจกรรมเพื่อเช็คอิน
                         </div>
                     </>

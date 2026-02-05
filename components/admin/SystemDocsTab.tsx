@@ -4,7 +4,7 @@ import {
     FileText, Database, Server, Code, Layers, CloudLightning, Package, Terminal, 
     AlertTriangle, Workflow, Shield, Globe, FolderTree, GitMerge,
     Share2, Smartphone, Map, HardDrive, Lock, CheckCircle2, XCircle, ArrowRight,
-    Palette, BarChart3, Zap, Monitor
+    Palette, BarChart3, Zap, Monitor, Rocket
 } from 'lucide-react';
 
 const SystemDocsTab: React.FC = () => {
@@ -158,7 +158,7 @@ const SystemDocsTab: React.FC = () => {
                     <ArrowRight className="w-4 h-4 text-gray-400"/>
                     <span className="bg-gray-100 px-3 py-2 rounded-lg">2. ตรวจสอบพิกัด GPS (Haversine Formula)</span>
                     <ArrowRight className="w-4 h-4 text-gray-400"/>
-                    <span className="bg-gray-100 px-3 py-2 rounded-lg">3. ตรวจสอบระยะเวลา & ความจุ</span>
+                    <span className="bg-gray-100 px-3 py-2 rounded-lg">3. ตรวจสอบระยะเวลา &amp; ความจุ</span>
                     <ArrowRight className="w-4 h-4 text-gray-400"/>
                     <span className="bg-gray-100 px-3 py-2 rounded-lg">4. ถ่ายรูปยืนยัน (ถ้าบังคับ)</span>
                     <ArrowRight className="w-4 h-4 text-gray-400"/>
@@ -228,12 +228,12 @@ const SystemDocsTab: React.FC = () => {
             <div className="p-4 border rounded-xl bg-green-50 border-green-100 flex flex-col items-center text-center">
                 <Smartphone className="w-8 h-8 text-green-600 mb-2"/>
                 <h3 className="font-bold text-gray-800 text-sm">LINE LIFF</h3>
-                <p className="text-xs text-gray-600 mt-1">Authentication & Sharing</p>
+                <p className="text-xs text-gray-600 mt-1">Authentication &amp; Sharing</p>
             </div>
             <div className="p-4 border rounded-xl bg-blue-50 border-blue-100 flex flex-col items-center text-center">
                 <Database className="w-8 h-8 text-blue-600 mb-2"/>
                 <h3 className="font-bold text-gray-800 text-sm">Google Sheets</h3>
-                <p className="text-xs text-gray-600 mt-1">Database & API Backend</p>
+                <p className="text-xs text-gray-600 mt-1">Database &amp; API Backend</p>
             </div>
             <div className="p-4 border rounded-xl bg-yellow-50 border-yellow-100 flex flex-col items-center text-center">
                 <HardDrive className="w-8 h-8 text-yellow-600 mb-2"/>
@@ -243,7 +243,7 @@ const SystemDocsTab: React.FC = () => {
             <div className="p-4 border rounded-xl bg-purple-50 border-purple-100 flex flex-col items-center text-center">
                 <Map className="w-8 h-8 text-purple-600 mb-2"/>
                 <h3 className="font-bold text-gray-800 text-sm">OpenStreetMap</h3>
-                <p className="text-xs text-gray-600 mt-1">Location & GPS Verification</p>
+                <p className="text-xs text-gray-600 mt-1">Location &amp; GPS Verification</p>
             </div>
         </div>
       </div>
@@ -301,7 +301,7 @@ const SystemDocsTab: React.FC = () => {
                     <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
                     <div className="w-3 h-3 rounded-full bg-green-500"></div>
                 </div>
-                <p className="text-gray-500"># 1. Clone & Install Dependencies</p>
+                <p className="text-gray-500"># 1. Clone &amp; Install Dependencies</p>
                 <p>$ git clone https://github.com/noppharut5252/Checkin.git</p>
                 <p>$ cd Checkin</p>
                 <p>$ npm install</p>
@@ -309,7 +309,7 @@ const SystemDocsTab: React.FC = () => {
                 <p className="text-gray-500"># 2. Run Local Development</p>
                 <p>$ npm run dev</p>
                 <br/>
-                <p className="text-gray-500"># 3. Build & Deploy to GitHub Pages</p>
+                <p className="text-gray-500"># 3. Build &amp; Deploy to GitHub Pages</p>
                 <p>$ npm run build</p>
                 <p>$ git add .</p>
                 <p>$ git commit -m "Update system"</p>
@@ -345,6 +345,49 @@ const SystemDocsTab: React.FC = () => {
                     </div>
                 </div>
             ))}
+        </div>
+      </div>
+
+      {/* 10. Roadmap & Limitations (New) */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
+            <Zap className="w-6 h-6 mr-2 text-yellow-500" />
+            10. แผนพัฒนาและข้อจำกัด (Roadmap & Limitations)
+        </h2>
+        
+        <div className="space-y-4">
+            <div className="bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-xl">
+                <h3 className="font-bold text-orange-800 text-sm flex items-center mb-2">
+                    <AlertTriangle className="w-4 h-4 mr-2"/> ข้อจำกัดในเวอร์ชันปัจจุบัน (Current Limitations v1.0.2)
+                </h3>
+                <ul className="list-disc list-inside text-sm text-orange-700 space-y-1 ml-1">
+                    <li><strong>ระบบเกียรติบัตร (Certificates):</strong> ฟังก์ชันการออกเกียรติบัตรอัตโนมัติ (Generate PDF) และการตั้งค่า Template ยังไม่เปิดใช้งานในเวอร์ชันนี้ อยู่ระหว่างการพัฒนา</li>
+                    <li><strong>การนำเข้าข้อมูล (Import):</strong> การนำเข้าข้อมูลรายชื่อทีมและผู้เข้าแข่งขันรองรับเฉพาะไฟล์ CSV รูปแบบมาตรฐานเท่านั้น ยังไม่รองรับ Excel (.xlsx) โดยตรง</li>
+                    <li><strong>การแจ้งเตือน (Notifications):</strong> ยังไม่มีระบบแจ้งเตือนผ่าน LINE OA อัตโนมัติเมื่อมีการเปลี่ยนแปลงข้อมูล</li>
+                </ul>
+            </div>
+
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-xl">
+                <h3 className="font-bold text-blue-800 text-sm flex items-center mb-2">
+                    <Rocket className="w-4 h-4 mr-2"/> สิ่งที่จะเพิ่มเติมในเวอร์ชันถัดไป (Future Roadmap v1.1.0+)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-700">
+                    <div>
+                        <ul className="list-disc list-inside space-y-1 ml-1">
+                            <li>ระบบออกแบบและพิมพ์เกียรติบัตรออนไลน์ (Certificate Builder)</li>
+                            <li>ระบบประเมินผลและให้คะแนนกรรมการผ่านมือถือ (Mobile Scoring)</li>
+                            <li>Dashboard สรุปผลการแข่งขันแบบ Real-time แยกตามเขตพื้นที่</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <ul className="list-disc list-inside space-y-1 ml-1">
+                            <li>รองรับการแนบไฟล์เอกสารหลักฐานการสมัคร (PDF Upload)</li>
+                            <li>ระบบจัดการสิทธิ์ผู้ใช้งานที่ละเอียดขึ้น (Granular Permissions)</li>
+                            <li>การปรับแต่งธีมสีของแอปพลิเคชัน (Theme Customization)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
         </div>
       </div>
 

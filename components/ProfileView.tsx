@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, AppData } from '../types';
-import { User as UserIcon, Save, School, Shield, Loader2, Link as LinkIcon, CheckCircle, AlertCircle, LayoutGrid, Check } from 'lucide-react';
+import { User as UserIcon, Save, School, Shield, Loader2, Link as LinkIcon, CheckCircle, AlertCircle, LayoutGrid, Check, Download } from 'lucide-react';
 import { linkLineAccount, registerUser, updateUser } from '../services/api';
 import { initLiff, loginLiff } from '../services/liff';
 import SearchableSelect from './SearchableSelect';
+import { useNavigate } from 'react-router-dom';
 
 interface ProfileViewProps {
   user: User;
@@ -21,6 +22,7 @@ const PDPA_TEXT = `
 `;
 
 const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isRegistrationMode = false }) => {
+  const navigate = useNavigate();
   const [prefix, setPrefix] = useState(user.Prefix || '');
   const [name, setName] = useState(user.Name || '');
   const [surname, setSurname] = useState(user.Surname || '');
@@ -143,9 +145,17 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
       )}
 
       {!isRegistrationMode && (
-        <div>
-            <h2 className="text-2xl font-bold text-gray-800">ข้อมูลส่วนตัว (Profile)</h2>
-            <p className="text-gray-500">จัดการข้อมูลผู้ใช้งานและตรวจสอบสถานะบัญชี</p>
+        <div className="flex justify-between items-center">
+            <div>
+                <h2 className="text-2xl font-bold text-gray-800">ข้อมูลส่วนตัว (Profile)</h2>
+                <p className="text-gray-500">จัดการข้อมูลผู้ใช้งานและตรวจสอบสถานะบัญชี</p>
+            </div>
+            <button 
+                onClick={() => navigate('/install-guide')}
+                className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center text-sm font-medium shadow-sm"
+            >
+                <Download className="w-4 h-4 mr-2" /> ติดตั้งแอป
+            </button>
         </div>
       )}
 
@@ -273,7 +283,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, data, onUpdateUser, isR
                                 <input type="email" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" value={email} onChange={(e) => setEmail(e.target.value)} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">เบอร์โทร</label>
                                 <input 
                                     type="tel"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" 

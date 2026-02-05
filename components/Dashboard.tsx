@@ -5,7 +5,7 @@ import {
     Users, MapPin, Clock, Activity, 
     BarChart3, TrendingUp, Search, PlayCircle, LogIn, ArrowRight,
     Megaphone, FileText, Calendar, Filter, Timer, ChevronLeft, ChevronRight,
-    Navigation, ImageIcon, X, Map as MapIcon, List, ScanLine, QrCode, CheckSquare, Sparkles, Building, Layers
+    Navigation, ImageIcon, X, Map as MapIcon, List, ScanLine, QrCode, CheckSquare, Sparkles, Building, Layers, Tag
 } from 'lucide-react';
 import StatCard from './StatCard';
 import { useNavigate } from 'react-router-dom';
@@ -214,6 +214,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'upcoming' | 'ended'>('all');
   const [locationFilter, setLocationFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('All');
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -231,7 +232,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
 
   useEffect(() => {
       setCurrentPage(1);
-  }, [searchTerm, statusFilter, locationFilter, itemsPerPage]);
+  }, [searchTerm, statusFilter, locationFilter, categoryFilter, itemsPerPage]);
 
   const isDateValid = (d: any) => d && !isNaN(new Date(d).getTime());
 
@@ -285,6 +286,15 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
       return { totalActivities, totalLocations, totalCheckIns, totalCapacity, activeActivities, chartData };
   }, [data.checkInActivities, data.checkInLocations]);
 
+  // --- Categories for Filter ---
+  const uniqueCategories = useMemo(() => {
+      const cats = new Set<string>();
+      (data.checkInActivities || []).forEach(act => {
+          if (act.Category) cats.add(act.Category);
+      });
+      return ['All', ...Array.from(cats).sort()];
+  }, [data.checkInActivities]);
+
   // --- Filtering Logic ---
   const filteredActivities = useMemo(() => {
       let filtered = (data.checkInActivities || []).filter(act => {
@@ -292,7 +302,9 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
           const status = getActivityStatus(act);
           const matchesStatus = statusFilter === 'all' || status.key === statusFilter;
           const matchesLocation = locationFilter === 'all' || act.LocationID === locationFilter;
-          return matchesSearch && matchesStatus && matchesLocation;
+          const matchesCategory = categoryFilter === 'All' || act.Category === categoryFilter;
+          
+          return matchesSearch && matchesStatus && matchesLocation && matchesCategory;
       });
 
       filtered.sort((a, b) => {
@@ -320,7 +332,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
           return 0;
       });
       return filtered;
-  }, [data.checkInActivities, searchTerm, statusFilter, locationFilter]);
+  }, [data.checkInActivities, searchTerm, statusFilter, locationFilter, categoryFilter]);
 
   // --- My Activities (User Only) ---
   const myActivities = useMemo(() => {
@@ -644,6 +656,24 @@ const Dashboard: React.FC<DashboardProps> = ({ data, user }) => {
                         <Filter className="absolute right-2 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" />
                     </div>
                 </div>
+            </div>
+
+            {/* Category Chips - New Feature */}
+            <div className="flex gap-2 overflow-x-auto pb-2 px-1 no-scrollbar">
+                {uniqueCategories.map(cat => (
+                    <button
+                        key={cat}
+                        onClick={() => setCategoryFilter(cat)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all flex items-center border ${
+                            categoryFilter === cat 
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
+                            : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                        }`}
+                    >
+                        {cat === 'All' ? 'ทั้งหมด' : cat}
+                        {cat !== 'All' && <Tag className="w-3 h-3 ml-1.5 opacity-60" />}
+                    </button>
+                ))}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">

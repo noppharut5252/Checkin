@@ -22,7 +22,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userProfile, data }) => {
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const APP_VERSION = 'v1.0.1'; // Updated version
+  const APP_VERSION = 'v1.0.2'; // Updated version
   
   // Global Scanner State
   const [isScannerOpen, setIsScannerOpen] = useState(false);

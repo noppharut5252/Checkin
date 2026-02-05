@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppData, CheckInUser } from '../types';
 import { LayoutGrid, Database, Loader2, Activity, ShieldCheck, FileText } from 'lucide-react';

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { User } from '../types';
 import { loginStandardUser } from '../services/api';
 import { loginLiff } from '../services/liff';
-import { User as UserIcon, Lock, Loader2, CheckCircle, AlertCircle, LogIn, ExternalLink, ArrowRight, MapPin, UserPlus } from 'lucide-react';
+import { User as UserIcon, Lock, Loader2, CheckCircle, AlertCircle, LogIn, ExternalLink, ArrowRight, MapPin, UserPlus, Download } from 'lucide-react';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: User) => void;
@@ -215,6 +215,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 <p className="text-blue-100 text-[10px] mt-2 relative z-10 font-light leading-tight px-4">
                     กิจกรรมการเรียนรู้ ภายใต้โครงการเสริมสร้างคุณธรรม จริยธรรมและธรรมาภิบาลในสถานศึกษา และสำนักงานเขตพื้นที่การศึกษา (โครงการโรงเรียนสุจริต) ประจำปีงบประมาณ พ.ศ. 2568 ระดับประเทศ
                 </p>
+                <div className="mt-3 relative z-10">
+                    <button 
+                        onClick={() => navigate('/install-guide')}
+                        className="text-xs bg-white/20 hover:bg-white/30 text-white py-1.5 px-3 rounded-full backdrop-blur-sm transition-colors flex items-center justify-center mx-auto"
+                    >
+                        <Download className="w-3 h-3 mr-1" />
+                        วิธีติดตั้งแอป (Install App)
+                    </button>
+                </div>
             </div>
 
             <div className="p-8">

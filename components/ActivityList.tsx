@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AppData } from '../types';
 import { Users, MapPin, Search, Filter, Clock, ChevronRight, GraduationCap, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -8,10 +8,57 @@ interface ActivityListProps {
   data: AppData;
 }
 
+const ActivitySkeleton = () => (
+  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-full flex flex-col animate-pulse">
+    {/* Image Placeholder */}
+    <div className="h-40 bg-gray-200 w-full relative">
+        <div className="absolute top-3 left-3 w-16 h-6 bg-gray-300 rounded-lg"></div>
+    </div>
+    {/* Content */}
+    <div className="p-5 flex-1 flex flex-col space-y-3">
+        <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+        <div className="space-y-2">
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+            <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+        </div>
+        <div className="mt-auto pt-4 border-t border-gray-50 flex justify-between items-center">
+            <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+            <div className="h-8 bg-gray-200 rounded-lg w-24"></div>
+        </div>
+    </div>
+  </div>
+);
+
+const ActivityListSkeleton = () => (
+    <div className="space-y-6 pb-20 animate-in fade-in duration-500">
+        {/* Header Skeleton */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+            <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex-1 h-10 bg-gray-200 rounded-xl"></div>
+                <div className="w-full md:w-64 h-10 bg-gray-200 rounded-xl"></div>
+            </div>
+        </div>
+        
+        {/* Grid Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map(i => <ActivitySkeleton key={i} />)}
+        </div>
+    </div>
+);
+
 const ActivityList: React.FC<ActivityListProps> = ({ data }) => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+      // Simulate loading delay for better UX transition
+      const timer = setTimeout(() => setIsLoading(false), 500);
+      return () => clearTimeout(timer);
+  }, []);
 
   // Helper for safe date parsing
   const isValidDate = (d: any) => {
@@ -60,6 +107,10 @@ const ActivityList: React.FC<ActivityListProps> = ({ data }) => {
       
       return { label: 'กำลังแข่งขัน', color: 'bg-green-100 text-green-700' };
   };
+
+  if (isLoading) {
+      return <ActivityListSkeleton />;
+  }
 
   return (
     <div className="space-y-6 pb-20 animate-in fade-in duration-500">

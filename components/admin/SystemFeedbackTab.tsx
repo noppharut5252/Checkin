@@ -88,7 +88,6 @@ const SystemFeedbackTab: React.FC<SystemFeedbackTabProps> = ({ data, user }) => 
 
         setIsSubmitting(true);
         try {
-            // Updated: respondToSystemReport now returns an object with lineError
             const res = await respondToSystemReport({
                 reportId: selectedReport.ReportID,
                 response: replyText,
@@ -441,4 +440,3 @@ const SystemFeedbackTab: React.FC<SystemFeedbackTabProps> = ({ data, user }) => 
 };
 
 export default SystemFeedbackTab;
-    

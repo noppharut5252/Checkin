@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User, RedemptionLog } from '../../types';
-import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, Eye, EyeOff, LayoutList, Split, TrendingUp, PieChart, Volume2, RefreshCcw, Timer, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
-import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers, redeemReward, getRedemptions, getUserCheckInHistory } from '../../services/api';
+import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User, RedemptionLog, CertificateTemplate } from '../../types';
+import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, Eye, EyeOff, LayoutList, Split, TrendingUp, PieChart, Volume2, RefreshCcw, Timer, ShieldAlert, Wifi, WifiOff, FileBadge } from 'lucide-react';
+import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers, redeemReward, getRedemptions, getUserCheckInHistory, getCertificateConfig } from '../../services/api';
 import { resizeImage } from '../../services/utils';
 import SearchableSelect from '../SearchableSelect';
 import QRScannerModal from '../QRScannerModal';
@@ -39,6 +39,9 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     const [isDataLoaded, setIsDataLoaded] = useState(false);
     const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
     const [isSyncing, setIsSyncing] = useState(false);
+    
+    // Certificate Templates
+    const [certTemplates, setCertTemplates] = useState<Record<string, CertificateTemplate>>({});
     
     // UI State
     const [viewingStatsFor, setViewingStatsFor] = useState<PassportMission | null>(null);
@@ -83,6 +86,15 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     const loadData = async () => {
         setIsLoadingStats(true);
         await syncDataBackground();
+        
+        // Load Certificate Templates
+        try {
+            const templates = await getCertificateConfig();
+            setCertTemplates(templates);
+        } catch(e) {
+            console.error("Failed to load cert templates", e);
+        }
+
         setIsLoadingStats(false);
         setIsDataLoaded(true);
     };
@@ -1079,6 +1091,46 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                 </h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-3">
+                                        
+                                        {/* New: Reward Type Selector */}
+                                        <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                                            <label className="block text-xs font-bold text-yellow-800 mb-1">ประเภทรางวัล (Reward Type)</label>
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => updateMission(activeMission.id, 'rewardType', 'stamp')}
+                                                    className={`flex-1 py-1.5 px-2 rounded text-xs font-bold transition-all border ${activeMission.rewardType !== 'certificate' ? 'bg-white border-yellow-500 text-yellow-700 shadow-sm' : 'bg-transparent border-transparent text-yellow-600/60 hover:bg-yellow-100'}`}
+                                                >
+                                                    <Award className="w-3 h-3 inline mr-1"/> ตราประทับ (Stamp)
+                                                </button>
+                                                <button 
+                                                    onClick={() => updateMission(activeMission.id, 'rewardType', 'certificate')}
+                                                    className={`flex-1 py-1.5 px-2 rounded text-xs font-bold transition-all border ${activeMission.rewardType === 'certificate' ? 'bg-white border-purple-500 text-purple-700 shadow-sm' : 'bg-transparent border-transparent text-yellow-600/60 hover:bg-yellow-100'}`}
+                                                >
+                                                    <FileBadge className="w-3 h-3 inline mr-1"/> เกียรติบัตร (Certificate)
+                                                </button>
+                                            </div>
+                                            
+                                            {/* Certificate Template Selector */}
+                                            {activeMission.rewardType === 'certificate' && (
+                                                <div className="mt-2 animate-in fade-in slide-in-from-top-1">
+                                                    <label className="block text-[10px] font-bold text-purple-700 mb-1">เลือกรูปแบบเกียรติบัตร</label>
+                                                    <select 
+                                                        className="w-full border border-purple-200 rounded p-1.5 text-xs bg-white text-purple-900 focus:ring-1 focus:ring-purple-500"
+                                                        value={activeMission.certTemplateId || ''}
+                                                        onChange={(e) => updateMission(activeMission.id, 'certTemplateId', e.target.value)}
+                                                    >
+                                                        <option value="">-- เลือก Template --</option>
+                                                        {Object.values(certTemplates).map(tmpl => (
+                                                            <option key={tmpl.id} value={tmpl.id}>{tmpl.name}</option>
+                                                        ))}
+                                                    </select>
+                                                    <p className="text-[9px] text-purple-600 mt-1">
+                                                        * ไปที่เมนู "เอกสาร/พิมพ์" เพื่อสร้าง Template ใหม่
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+
                                         <div>
                                             <label className="block text-xs font-bold text-gray-500 mb-1">ข้อความรางวัล</label>
                                             <input 
@@ -1159,13 +1211,15 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                             style={{ 
                                                 borderColor: activeMission.rewardColor || '#F59E0B',
                                                 color: activeMission.rewardColor || '#F59E0B',
-                                                transform: 'rotate(-12deg)',
-                                                maskImage: `url('https://www.transparenttextures.com/patterns/rough-paper.png')`,
-                                                WebkitMaskImage: `url('https://www.transparenttextures.com/patterns/rough-paper.png')`,
+                                                transform: activeMission.rewardType === 'certificate' ? 'none' : 'rotate(-12deg)',
+                                                maskImage: activeMission.rewardType === 'certificate' ? 'none' : `url('https://www.transparenttextures.com/patterns/rough-paper.png')`,
+                                                WebkitMaskImage: activeMission.rewardType === 'certificate' ? 'none' : `url('https://www.transparenttextures.com/patterns/rough-paper.png')`,
                                                 opacity: 0.9
                                             }}
                                         >
-                                            {activeMission.stampImage ? (
+                                            {activeMission.rewardType === 'certificate' ? (
+                                                <FileBadge className="w-12 h-12" />
+                                            ) : activeMission.stampImage ? (
                                                 <img 
                                                     src={activeMission.stampImage} 
                                                     className="w-20 h-20 object-contain"
@@ -1183,6 +1237,12 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                                                 </>
                                             )}
                                         </div>
+                                        
+                                        {activeMission.rewardType === 'certificate' && (
+                                            <div className="absolute bottom-2 bg-white/80 px-2 py-0.5 rounded text-[10px] text-purple-700 font-bold shadow-sm">
+                                                Certificate Mode
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

@@ -182,6 +182,34 @@ export const submitSystemReport = async (data: { userId: string, type: 'bug' | '
     return res.status === 'success';
 };
 
+// New: Get System Reports
+export const getSystemReports = async (userId?: string) => {
+    const res = await apiRequest('getSystemReports', { userId });
+    return res.status === 'success' ? res.reports : [];
+};
+
+// New: Respond to System Report
+export const respondToSystemReport = async (data: { 
+    reportId: string, 
+    response: string, 
+    status: string, 
+    priority: string,
+    adminName: string,
+    notifyEmail: boolean,
+    notifyLine: boolean,
+    userEmail?: string,
+    userLineId?: string,
+    subject?: string
+}) => {
+    const res = await apiRequest('respondToReport', data);
+    return res.status === 'success';
+};
+
+// New: Test LINE Integration
+export const testLineIntegration = async (token: string, userId: string) => {
+    return await apiRequest('testLineIntegration', { token, userId });
+};
+
 export const uploadImage = async (base64Data: string, filename: string) => {
     // Uploads might take time, give it a bit more initial delay on retry
     return await apiRequest('uploadFile', { data: base64Data, filename, mimeType: 'image/jpeg' }, 2, 2000);

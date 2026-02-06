@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User, RedemptionLog } from '../../types';
-import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, Eye, EyeOff, LayoutList, Split, TrendingUp, PieChart, Volume2, RefreshCcw, Timer } from 'lucide-react';
+import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, Eye, EyeOff, LayoutList, Split, TrendingUp, PieChart, Volume2, RefreshCcw, Timer, ShieldAlert } from 'lucide-react';
 import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers, redeemReward, getRedemptions, getUserCheckInHistory } from '../../services/api';
 import { resizeImage } from '../../services/utils';
 import SearchableSelect from '../SearchableSelect';
@@ -53,6 +53,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         mission?: PassportMission;
         redemption?: RedemptionLog;
         message?: string;
+        debugInfo?: string;
     } | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -108,7 +109,15 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     const checkUserCompletion = (userId: string, mission: PassportMission, logsOverride?: CheckInLog[]) => {
         const sourceLogs = logsOverride || allLogs;
         const userLogs = sourceLogs.filter(l => l.UserID === userId);
-        const targetLogs = mission.dateScope === 'all_time' ? userLogs : userLogs.filter(l => l.Timestamp.startsWith(mission.date));
+        
+        // Fix Timezone Issue: Compare Date parts only using local time
+        const targetLogs = mission.dateScope === 'all_time' ? userLogs : userLogs.filter(l => {
+            const logDate = new Date(l.Timestamp);
+            // Format to YYYY-MM-DD in local time
+            const localLogDate = logDate.toLocaleDateString('en-CA'); 
+            return localLogDate === mission.date;
+        });
+
         const logic = mission.conditionLogic || 'AND';
         
         const results = mission.requirements.map(req => {
@@ -135,7 +144,9 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         const logic = mission.conditionLogic || 'AND';
         Object.keys(logsByUser).forEach(userId => {
             const userLogs = logsByUser[userId];
-            const targetLogs = mission.dateScope === 'all_time' ? userLogs : userLogs.filter(l => l.Timestamp.startsWith(mission.date));
+            // Timezone Fix applied here as well
+            const targetLogs = mission.dateScope === 'all_time' ? userLogs : userLogs.filter(l => new Date(l.Timestamp).toLocaleDateString('en-CA') === mission.date);
+            
             let lastReqTimestamp = 0;
             let satisfiedCount = 0;
             mission.requirements.forEach(req => {
@@ -201,9 +212,10 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         // 1. Check Expiration (5 Minutes)
         const qrTime = parseInt(timestamp);
         const now = Date.now();
-        if (now - qrTime > 5 * 60 * 1000) { 
+        // Allow slightly longer expiry (10 mins) just in case
+        if (now - qrTime > 10 * 60 * 1000) { 
             playSound('error');
-            setVerifyResult({ status: 'expired', message: 'QR Code หมดอายุ (เกิน 5 นาที) โปรดให้นักเรียนรีเฟรชหน้าจอ' });
+            setVerifyResult({ status: 'expired', message: 'QR Code หมดอายุ โปรดให้นักเรียนรีเฟรชหน้าจอ' });
             return;
         }
 
@@ -223,29 +235,35 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
             // Fetch logs for this user specifically to get latest status
             const freshUserLogs = await getUserCheckInHistory(userId);
             
-            // Fetch user info if missing
+            // Try to resolve user name from Logs if User is missing from cache
+            if (!currentUser && freshUserLogs.length > 0) {
+                // Pick the most recent name used
+                const recentLog = freshUserLogs[freshUserLogs.length - 1];
+                if (recentLog.UserName) {
+                    currentUser = { 
+                        UserID: userId, 
+                        Name: recentLog.UserName, 
+                        Role: 'User',
+                        SchoolID: 'N/A'
+                    } as User;
+                }
+            }
+            
+            // If still missing, try generic fallback
             if (!currentUser) {
-                // If user not in cache, try to refresh all users (fallback)
-                // Note: ideally we'd have a getUser(id) API, but getAllUsers is what we have for admin list
-                const usersRes = await getAllUsers();
-                setAllUsers(usersRes); // Update global state
-                currentUser = usersRes.find(u => u.UserID === userId);
+                currentUser = { UserID: userId, Name: 'Unknown User (ID: ' + userId.substring(0,6) + ')', Role: 'Guest' } as User;
             }
 
             // Merge fresh logs into current logs for validation
-            // We use a temporary array for validation to ensure correctness without waiting for state update
             const otherLogs = allLogs.filter(l => l.UserID !== userId);
             currentLogs = [...otherLogs, ...freshUserLogs];
-            
-            // Also update global state for UI consistency
-            setAllLogs(currentLogs);
+            setAllLogs(currentLogs); // Update global state
 
         } catch (e) {
             console.error("Auto-fetch failed", e);
-            // Fallback to existing state if fetch fails
         }
 
-        const userDisplay = currentUser || { UserID: userId, Name: 'Unknown User', Role: 'Guest' } as User;
+        const userDisplay = currentUser || { UserID: userId, Name: 'System User', Role: 'Guest' } as User;
 
         // Check Inventory (Global Cap)
         if (mission.maxRedemptions && mission.maxRedemptions > 0) {
@@ -267,9 +285,19 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
         // Check completion status (Security Check) with FRESH LOGS
         const isComplete = checkUserCompletion(userId, mission, currentLogs);
+        
+        // Debug info construction for "Force" decision
+        const debugInfo = `User logs: ${currentLogs.filter(l => l.UserID === userId).length}, Mission Date: ${mission.date}`;
+
         if (!isComplete) {
             playSound('error');
-            setVerifyResult({ status: 'not_completed', user: userDisplay, mission, message: 'ผู้ใช้ยังทำภารกิจไม่ครบเงื่อนไข' });
+            setVerifyResult({ 
+                status: 'not_completed', 
+                user: userDisplay, 
+                mission, 
+                message: 'ระบบตรวจสอบไม่พบประวัติการทำภารกิจครบตามเงื่อนไข',
+                debugInfo 
+            });
             return;
         }
 
@@ -310,6 +338,18 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         } catch (e) {
             alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
             setSavingRedemption(null);
+        }
+    };
+
+    // Force Redeem Handler
+    const handleForceRedeem = async () => {
+        if(!confirm('ยืนยันการแจกรางวัลกรณีพิเศษ? (Force Redeem)')) return;
+        
+        // Manually trigger valid state then confirm
+        if(verifyResult) {
+            setVerifyResult({...verifyResult, status: 'valid'});
+            // Delay slightly to let UI update then trigger save
+            setTimeout(() => confirmRedemptionFromScan(), 100);
         }
     };
 
@@ -418,7 +458,26 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                             </>
                         )}
                         
-                        {status !== 'valid' && status !== 'verifying' && (
+                        {/* Force Redeem for Errors */}
+                        {(status === 'not_completed' || status === 'invalid') && (
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={handleForceRedeem}
+                                    className="w-full py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl font-bold transition-colors flex items-center justify-center border border-orange-200"
+                                >
+                                    <ShieldAlert className="w-4 h-4 mr-2" /> อนุมัติกรณีพิเศษ (Force)
+                                </button>
+                                <button 
+                                    onClick={() => { setVerifyResult(null); setIsScannerOpen(true); }}
+                                    className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors flex items-center justify-center"
+                                >
+                                    <ScanLine className="w-4 h-4 mr-2" /> สแกนใหม่
+                                </button>
+                            </div>
+                        )}
+                        
+                        {/* Other Errors */}
+                        {(status === 'expired' || status === 'out_of_stock') && (
                             <button 
                                 onClick={() => { setVerifyResult(null); setIsScannerOpen(true); }}
                                 className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors flex items-center justify-center"

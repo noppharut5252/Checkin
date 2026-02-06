@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppData, CheckInUser } from '../types';
-import { LayoutGrid, Database, Loader2, Activity, ShieldCheck, FileText } from 'lucide-react';
+import { LayoutGrid, Database, Loader2, Activity, ShieldCheck, FileText, MessageSquareWarning } from 'lucide-react';
 import LocationsTab from './admin/LocationsTab';
 import ActivitiesTab from './admin/ActivitiesTab';
 import LogsTab from './admin/LogsTab';
@@ -8,6 +9,7 @@ import PrintablesTab from './admin/PrintablesTab';
 import LiveMonitorTab from './admin/LiveMonitorTab';
 import PassportSettings from './admin/PassportSettings';
 import SystemDocsTab from './admin/SystemDocsTab';
+import SystemFeedbackTab from './admin/SystemFeedbackTab';
 import { useSearchParams } from 'react-router-dom';
 
 interface AdminProps {
@@ -18,7 +20,7 @@ interface AdminProps {
 
 const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate }) => {
     const [searchParams] = useSearchParams();
-    const [activeTab, setActiveTab] = useState<'locations' | 'activities' | 'printables' | 'logs' | 'live' | 'passport' | 'docs'>('locations');
+    const [activeTab, setActiveTab] = useState<'locations' | 'activities' | 'printables' | 'logs' | 'live' | 'passport' | 'docs' | 'feedback'>('locations');
     const [isGenerating, setIsGenerating] = useState(false);
     const [logSearchQuery, setLogSearchQuery] = useState('');
 
@@ -67,6 +69,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
                         <button onClick={() => setActiveTab('logs')} className={`px-3 py-2 rounded-md text-xs md:text-sm font-bold ${activeTab === 'logs' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>Logs</button>
                         <button onClick={() => setActiveTab('printables')} className={`px-3 py-2 rounded-md text-xs md:text-sm font-bold ${activeTab === 'printables' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>ป้าย</button>
                         <button onClick={() => setActiveTab('live')} className={`px-3 py-2 rounded-md text-xs md:text-sm font-bold flex items-center ${activeTab === 'live' ? 'bg-red-500 text-white shadow' : 'text-gray-500'}`}><Activity className="w-3 h-3 mr-1"/> Live</button>
+                        <button onClick={() => setActiveTab('feedback')} className={`px-3 py-2 rounded-md text-xs md:text-sm font-bold flex items-center ${activeTab === 'feedback' ? 'bg-amber-500 text-white shadow' : 'text-gray-500'}`}><MessageSquareWarning className="w-3 h-3 mr-1"/> Feedback</button>
                         <button onClick={() => setActiveTab('docs')} className={`px-3 py-2 rounded-md text-xs md:text-sm font-bold flex items-center ${activeTab === 'docs' ? 'bg-slate-700 text-white shadow' : 'text-gray-500'}`}><FileText className="w-3 h-3 mr-1"/> คู่มือ</button>
                     </div>
                 </div>
@@ -78,6 +81,7 @@ const AdminCheckInManager: React.FC<AdminProps> = ({ data, user, onDataUpdate })
             {activeTab === 'logs' && <LogsTab initialSearchQuery={logSearchQuery} data={data} />}
             {activeTab === 'printables' && <PrintablesTab data={data} />}
             {activeTab === 'live' && <LiveMonitorTab data={data} />}
+            {activeTab === 'feedback' && <SystemFeedbackTab data={data} user={user} />}
             {activeTab === 'docs' && <SystemDocsTab />}
         </div>
     );

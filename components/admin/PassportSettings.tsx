@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User, RedemptionLog } from '../../types';
-import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, Eye, EyeOff, LayoutList, Split, TrendingUp, PieChart, Volume2, RefreshCcw, Timer, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
+import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, Eye, EyeOff, LayoutList, Split, TrendingUp, PieChart, Volume2, RefreshCcw, Timer, ShieldAlert } from 'lucide-react';
 import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers, redeemReward, getRedemptions, getUserCheckInHistory } from '../../services/api';
 import { resizeImage } from '../../services/utils';
 import SearchableSelect from '../SearchableSelect';
@@ -37,8 +37,6 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     const [isLoadingStats, setIsLoadingStats] = useState(false);
     const [isLoadingDashboard, setIsLoadingDashboard] = useState(false); 
     const [isDataLoaded, setIsDataLoaded] = useState(false);
-    const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
-    const [isSyncing, setIsSyncing] = useState(false);
     
     // UI State
     const [viewingStatsFor, setViewingStatsFor] = useState<PassportMission | null>(null);
@@ -48,7 +46,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     
     // Scanner State
     const [isScannerOpen, setIsScannerOpen] = useState(false);
-    const [isContinuousMode, setIsContinuousMode] = useState(false);
+    const [isContinuousMode, setIsContinuousMode] = useState(false); // New: Continuous Mode
     const [verifyResult, setVerifyResult] = useState<{
         status: 'valid' | 'invalid' | 'redeemed' | 'not_completed' | 'out_of_stock' | 'expired' | 'verifying';
         user?: User;
@@ -60,7 +58,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Auto-hide alert
+    // Auto-hide alert after 3 seconds
     useEffect(() => {
         if (alertMessage) {
             const timer = setTimeout(() => setAlertMessage(null), 3000);
@@ -68,54 +66,46 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         }
     }, [alertMessage]);
 
-    // Initial Data Load
-    useEffect(() => {
-        loadData();
-        
-        // Background Polling every 30 seconds to keep data fresh without blocking UI
-        const interval = setInterval(() => {
-            syncDataBackground();
-        }, 30000);
-        
-        return () => clearInterval(interval);
-    }, []);
-
+    // Fetch Logs & Users
     const loadData = async () => {
         setIsLoadingStats(true);
-        await syncDataBackground();
-        setIsLoadingStats(false);
-        setIsDataLoaded(true);
-    };
-
-    const syncDataBackground = async () => {
-        if (isSyncing) return;
-        setIsSyncing(true);
         try {
             const [logsRes, usersRes, redemptionsRes] = await Promise.all([
                 getCheckInLogs(),
                 getAllUsers(),
                 getRedemptions()
             ]);
-            // Merge strategy: Replace completely to ensure latest state
-            // In a real app, you might want more complex merging to avoid overwriting local optimistic updates
-            // But for this simple case, replacement works if we assume admin is the single source of truth for redemptions
             setAllLogs(logsRes || []);
             setAllUsers(usersRes || []);
             setAllRedemptions(redemptionsRes || []);
-            setLastSyncTime(new Date());
+            setIsDataLoaded(true);
         } catch (e) {
-            console.error("Background sync failed", e);
+            console.error("Failed to load stats data");
+            setAlertMessage({ type: 'error', text: 'โหลดข้อมูลไม่สำเร็จ' });
         } finally {
-            setIsSyncing(false);
+            setIsLoadingStats(false);
         }
     };
 
+    // Handler to open dashboard with loading feedback
     const handleOpenDashboard = async () => {
-        if (!isDataLoaded) await loadData();
+        if (!isDataLoaded) {
+            setIsLoadingDashboard(true);
+            await loadData();
+            setIsLoadingDashboard(false);
+        }
         setShowDashboard(true);
     };
 
+    // Load data when opening stats specific mission
+    useEffect(() => {
+        if (viewingStatsFor && !isDataLoaded) {
+            loadData();
+        }
+    }, [viewingStatsFor]);
+
     // --- Logic: Check Mission Completion ---
+    // Updated: Accept optional logsOverride for real-time checking
     const checkUserCompletion = (userId: string, mission: PassportMission, logsOverride?: CheckInLog[]) => {
         const sourceLogs = logsOverride || allLogs;
         const userLogs = sourceLogs.filter(l => l.UserID === userId);
@@ -123,6 +113,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         // Fix Timezone Issue: Compare Date parts only using local time
         const targetLogs = mission.dateScope === 'all_time' ? userLogs : userLogs.filter(l => {
             const logDate = new Date(l.Timestamp);
+            // Format to YYYY-MM-DD in local time
             const localLogDate = logDate.toLocaleDateString('en-CA'); 
             return localLogDate === mission.date;
         });
@@ -153,7 +144,9 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         const logic = mission.conditionLogic || 'AND';
         Object.keys(logsByUser).forEach(userId => {
             const userLogs = logsByUser[userId];
+            // Timezone Fix applied here as well
             const targetLogs = mission.dateScope === 'all_time' ? userLogs : userLogs.filter(l => new Date(l.Timestamp).toLocaleDateString('en-CA') === mission.date);
+            
             let lastReqTimestamp = 0;
             let satisfiedCount = 0;
             mission.requirements.forEach(req => {
@@ -200,10 +193,10 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
     // --- Actions ---
 
-    // Optimized Scan Handler: Use LOCAL data first for instant feedback
     const handleScanResult = async (code: string) => {
         setIsScannerOpen(false);
-        // setVerifyResult({ status: 'verifying', message: 'กำลังตรวจสอบ...' }); // Skip this state for speed
+        // Show verifying state immediately
+        setVerifyResult({ status: 'verifying', message: 'กำลังดึงข้อมูลล่าสุด...' });
 
         // Format: REDEEM|UserID|MissionID|Timestamp
         const parts = code.split('|');
@@ -216,10 +209,11 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
         const [_, userId, missionId, timestamp] = parts;
         
-        // 1. Check Expiration
+        // 1. Check Expiration (5 Minutes)
         const qrTime = parseInt(timestamp);
         const now = Date.now();
-        if (now - qrTime > 10 * 60 * 1000) { // 10 minutes tolerance
+        // Allow slightly longer expiry (10 mins) just in case
+        if (now - qrTime > 10 * 60 * 1000) { 
             playSound('error');
             setVerifyResult({ status: 'expired', message: 'QR Code หมดอายุ โปรดให้นักเรียนรีเฟรชหน้าจอ' });
             return;
@@ -232,97 +226,129 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
             return;
         }
 
-        // 2. Local User Lookup (Fastest)
+        // --- CRITICAL FIX: Fetch fresh data for this specific user ---
+        // This solves "Unknown User" and "Unable to redeem" (stale logs) issues
         let currentUser = allUsers.find(u => u.UserID === userId);
-        if (!currentUser) {
-            // Fallback: Create placeholder user to allow scanning to proceed if log exists
-            // Or rely on background sync to have fetched it.
-            // If strictly local, we might miss new users, but speed is key.
-            currentUser = { UserID: userId, Name: 'Unknown User (' + userId.substring(0,4) + ')', Role: 'User' } as User;
+        let currentLogs = allLogs;
+
+        try {
+            // Fetch logs for this user specifically to get latest status
+            const freshUserLogs = await getUserCheckInHistory(userId);
+            
+            // Try to resolve user name from Logs if User is missing from cache
+            if (!currentUser && freshUserLogs.length > 0) {
+                // Pick the most recent name used
+                const recentLog = freshUserLogs[freshUserLogs.length - 1];
+                if (recentLog.UserName) {
+                    currentUser = { 
+                        UserID: userId, 
+                        Name: recentLog.UserName, 
+                        Role: 'User',
+                        SchoolID: 'N/A'
+                    } as User;
+                }
+            }
+            
+            // If still missing, try generic fallback
+            if (!currentUser) {
+                currentUser = { UserID: userId, Name: 'Unknown User (ID: ' + userId.substring(0,6) + ')', Role: 'Guest' } as User;
+            }
+
+            // Merge fresh logs into current logs for validation
+            const otherLogs = allLogs.filter(l => l.UserID !== userId);
+            currentLogs = [...otherLogs, ...freshUserLogs];
+            setAllLogs(currentLogs); // Update global state
+
+        } catch (e) {
+            console.error("Auto-fetch failed", e);
         }
 
-        // 3. Local Validation Checks
-        
-        // Check Inventory
+        const userDisplay = currentUser || { UserID: userId, Name: 'System User', Role: 'Guest' } as User;
+
+        // Check Inventory (Global Cap)
         if (mission.maxRedemptions && mission.maxRedemptions > 0) {
             const currentRedeemed = allRedemptions.filter(r => r.MissionID === missionId).length;
             if (currentRedeemed >= mission.maxRedemptions) {
                 playSound('error');
-                setVerifyResult({ status: 'out_of_stock', user: currentUser, mission, message: 'ของรางวัลหมดแล้ว (Out of Stock)' });
+                setVerifyResult({ status: 'out_of_stock', user: userDisplay, mission, message: 'ของรางวัลหมดแล้ว (Out of Stock)' });
                 return;
             }
         }
 
-        // Check Already Redeemed (Local Memory)
+        // Check if already redeemed
         const existingRedemption = allRedemptions.find(r => r.UserID === userId && r.MissionID === missionId);
         if (existingRedemption) {
             playSound('error'); 
-            setVerifyResult({ status: 'redeemed', user: currentUser, mission, redemption: existingRedemption });
+            setVerifyResult({ status: 'redeemed', user: userDisplay, mission, redemption: existingRedemption });
             return;
         }
 
-        // Check Completion (Local Memory)
-        const isComplete = checkUserCompletion(userId, mission);
+        // Check completion status (Security Check) with FRESH LOGS
+        const isComplete = checkUserCompletion(userId, mission, currentLogs);
+        
+        // Debug info construction for "Force" decision
+        const debugInfo = `User logs: ${currentLogs.filter(l => l.UserID === userId).length}, Mission Date: ${mission.date}`;
+
         if (!isComplete) {
             playSound('error');
             setVerifyResult({ 
                 status: 'not_completed', 
-                user: currentUser, 
+                user: userDisplay, 
                 mission, 
-                message: 'ระบบตรวจสอบไม่พบประวัติการทำภารกิจครบตามเงื่อนไข (ลองกด Refresh ข้อมูล)'
+                message: 'ระบบตรวจสอบไม่พบประวัติการทำภารกิจครบตามเงื่อนไข',
+                debugInfo 
             });
             return;
         }
 
-        // Valid
+        // Valid and Ready
         playSound('success');
-        setVerifyResult({ status: 'valid', user: currentUser, mission });
+        setVerifyResult({ status: 'valid', user: userDisplay, mission });
     };
 
     const confirmRedemptionFromScan = async () => {
         if (!verifyResult || !verifyResult.user || !verifyResult.mission) return;
         
         const { user, mission } = verifyResult;
+        setSavingRedemption(user.UserID); 
         
-        // --- Optimistic UI Update ---
-        // 1. Update Local State Immediately
-        const newLog = { UserID: user.UserID, MissionID: mission.id, Timestamp: new Date().toISOString() };
-        setAllRedemptions(prev => [...prev, newLog]);
-        
-        // 2. Feedback
-        playSound('redeem');
-        
-        // 3. Handle UI Flow
-        if (isContinuousMode) {
-            setVerifyResult(null); // Close modal
-            setAlertMessage({ type: 'success', text: `แจกรางวัลให้ ${user.Name} แล้ว!` });
-            // Re-open scanner quickly
-            setTimeout(() => setIsScannerOpen(true), 300);
-        } else {
-            setVerifyResult({ ...verifyResult, status: 'redeemed', redemption: newLog });
-            setAlertMessage({ type: 'success', text: 'บันทึกการแจกรางวัลสำเร็จ' });
-        }
-
-        // 4. Background Server Sync
-        // We don't await this to keep UI responsive
-        redeemReward(user.UserID, mission.id).then(res => {
-            if (res.status !== 'success') {
-                // Rollback if failed (Unlikely but possible)
-                console.error("Redemption failed on server", res);
-                setAllRedemptions(prev => prev.filter(r => r !== newLog));
-                alert(`การบันทึกข้อมูลล้มเหลวสำหรับ ${user.Name}: ${res.message}`);
+        try {
+            const res = await redeemReward(user.UserID, mission.id);
+            if (res.status === 'success') {
+                const newLog = { UserID: user.UserID, MissionID: mission.id, Timestamp: new Date().toISOString() };
+                setAllRedemptions(prev => [...prev, newLog]);
+                playSound('redeem');
+                
+                // Continuous Mode Logic
+                if (isContinuousMode) {
+                    setVerifyResult(null); // Close modal immediately
+                    setSavingRedemption(null);
+                    setAlertMessage({ type: 'success', text: `แจกรางวัลให้ ${user.Name} สำเร็จ!` });
+                    // Re-open scanner after short delay
+                    setTimeout(() => setIsScannerOpen(true), 500);
+                } else {
+                    setVerifyResult({ ...verifyResult, status: 'redeemed', redemption: newLog });
+                    setAlertMessage({ type: 'success', text: 'บันทึกการแจกรางวัลสำเร็จ' });
+                    setSavingRedemption(null);
+                }
+            } else {
+                alert('บันทึกไม่สำเร็จ: ' + res.message);
+                setSavingRedemption(null);
             }
-        }).catch(e => {
-            console.error("Redemption network error", e);
-            // Optional: Add to retry queue
-        });
+        } catch (e) {
+            alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+            setSavingRedemption(null);
+        }
     };
 
     // Force Redeem Handler
     const handleForceRedeem = async () => {
         if(!confirm('ยืนยันการแจกรางวัลกรณีพิเศษ? (Force Redeem)')) return;
+        
+        // Manually trigger valid state then confirm
         if(verifyResult) {
             setVerifyResult({...verifyResult, status: 'valid'});
+            // Delay slightly to let UI update then trigger save
             setTimeout(() => confirmRedemptionFromScan(), 100);
         }
     };
@@ -380,7 +406,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                     <div className="p-6 space-y-4">
                         {status === 'verifying' && (
                             <div className="text-center text-gray-500 py-4">
-                                กำลังตรวจสอบข้อมูล...
+                                กำลังดึงข้อมูลล่าสุดจากระบบ...
                             </div>
                         )}
 
@@ -412,11 +438,10 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                             <>
                                 <button 
                                     onClick={confirmRedemptionFromScan}
-                                    // disabled={!!savingRedemption} // Optimistic UI: Don't disable, just fire
+                                    disabled={!!savingRedemption}
                                     className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-200 active:scale-95 transition-all flex items-center justify-center"
                                 >
-                                    {/* {savingRedemption ? <Loader2 className="w-5 h-5 animate-spin"/> : <Gift className="w-5 h-5 mr-2"/>} */}
-                                    <Gift className="w-5 h-5 mr-2"/>
+                                    {savingRedemption ? <Loader2 className="w-5 h-5 animate-spin"/> : <Gift className="w-5 h-5 mr-2"/>}
                                     ยืนยันการแจกรางวัล
                                 </button>
                                 
@@ -765,17 +790,6 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                         <Award className="w-6 h-6 mr-2 text-indigo-600"/> ตั้งค่า Passport ภารกิจ
                     </h2>
                     <p className="text-gray-500 text-sm">กำหนดเงื่อนไขการผ่านด่านและการรับตราประทับในแต่ละวัน</p>
-                    
-                    {/* Sync Indicator */}
-                    <div className="flex items-center gap-2 mt-2">
-                        <span className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-yellow-400 animate-pulse' : 'bg-green-500'}`}></span>
-                        <span className="text-xs text-gray-400">
-                            {isSyncing ? 'Syncing...' : `Last synced: ${lastSyncTime.toLocaleTimeString()}`}
-                        </span>
-                        <button onClick={() => syncDataBackground()} className="p-1 hover:bg-gray-100 rounded-full" title="Sync Now">
-                            <RefreshCcw className={`w-3 h-3 text-gray-400 ${isSyncing ? 'animate-spin' : ''}`} />
-                        </button>
-                    </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <button 

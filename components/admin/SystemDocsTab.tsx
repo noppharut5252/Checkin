@@ -1,398 +1,442 @@
 
-import React from 'react';
-import { 
-    FileText, Database, Server, Code, Layers, CloudLightning, Package, Terminal, 
-    AlertTriangle, Workflow, Shield, Globe, FolderTree, GitMerge,
-    Share2, Smartphone, Map, HardDrive, Lock, CheckCircle2, XCircle, ArrowRight,
-    Palette, BarChart3, Zap, Monitor, Rocket
-} from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getSystemReports, respondToSystemReport, getLineQuota } from '../../services/api';
+import { Search, Filter, MessageSquareWarning, Bug, Lightbulb, CheckCircle, Clock, AlertCircle, Mail, MessageCircle, Send, Loader2, X, RefreshCw, Type, Zap, AlertTriangle, BarChart } from 'lucide-react';
+import { User } from '../../types';
 
-const SystemDocsTab: React.FC = () => {
-  const dbSchema = [
-    {
-      table: 'Users',
-      desc: 'เก็บข้อมูลผู้ใช้งานทั้งหมด ทั้ง Admin และ User ทั่วไป',
-      cols: ['UserID (PK)', 'Username', 'Password', 'Name', 'Surname', 'Role (admin/user/score)', 'SchoolID', 'LineID', 'PictureUrl']
-    },
-    {
-      table: 'Activities',
-      desc: 'เก็บข้อมูลกิจกรรมการแข่งขัน',
-      cols: ['ActivityID (PK)', 'Name', 'LocationID (FK)', 'StartDateTime', 'EndDateTime', 'Capacity', 'Category', 'Mode', 'ReqStudents', 'ReqTeachers', 'RequirePhoto', 'IsLocked', 'SurveyLink']
-    },
-    {
-      table: 'CheckIns',
-      desc: 'เก็บประวัติการเช็คอิน (Transaction)',
-      cols: ['CheckInID (PK)', 'UserID (FK)', 'ActivityID (FK)', 'LocationID (FK)', 'Timestamp', 'UserLat', 'UserLng', 'PhotoURL', 'SurveyStatus']
-    },
-    {
-      table: 'Locations',
-      desc: 'เก็บพิกัดสถานที่จัดงาน',
-      cols: ['LocationID (PK)', 'Name', 'Latitude', 'Longitude', 'RadiusMeters', 'Image']
-    },
-    {
-      table: 'Teams',
-      desc: 'เก็บข้อมูลทีมผู้เข้าแข่งขัน',
-      cols: ['TeamID (PK)', 'ActivityID (FK)', 'TeamName', 'SchoolID', 'Members (JSON)', 'Score', 'Rank', 'Status']
-    },
-    {
-      table: 'AppConfig',
-      desc: 'เก็บค่าการตั้งค่าระบบ (Key-Value)',
-      cols: ['Key', 'Value']
-    }
-  ];
+interface SystemFeedbackTabProps {
+    data: any;
+    user: User;
+}
 
-  const techStack = [
-    { name: 'React 18', desc: 'Frontend Library', icon: Code },
-    { name: 'Vite', desc: 'Build Tool & Dev Server', icon: CloudLightning },
-    { name: 'Tailwind CSS', desc: 'Styling Framework', icon: Palette },
-    { name: 'Google Apps Script', desc: 'Backend & API', icon: Server },
-    { name: 'Google Sheets', desc: 'Database', icon: Database },
-    { name: 'Recharts', desc: 'Data Visualization', icon: BarChart3 },
-    { name: 'Lucide React', desc: 'Iconography', icon: Layers },
-    { name: 'html2pdf.js', desc: 'PDF Generation', icon: FileText },
-  ];
+const QUICK_REPLIES = [
+    "รับเรื่องแล้ว กำลังตรวจสอบครับ",
+    "ดำเนินการแก้ไขเรียบร้อยแล้ว กรุณาลองใช้งานใหม่",
+    "ขอบคุณสำหรับข้อเสนอแนะ ทางเราจะนำไปปรับปรุง",
+    "ขอทราบข้อมูลเพิ่มเติมเกี่ยวกับรุ่นมือถือที่ใช้ครับ"
+];
 
-  const rbacData = [
-    { feature: 'จัดการผู้ใช้งาน (Manage Users)', admin: true, area: false, group: false, school: false, user: false },
-    { feature: 'ตั้งค่าระบบ (System Config)', admin: true, area: true, group: false, school: false, user: false },
-    { feature: 'จัดการกิจกรรม/สถานที่', admin: true, area: true, group: false, school: false, user: false },
-    { feature: 'บันทึกคะแนน (Score Entry)', admin: true, area: true, group: true, school: false, user: false },
-    { feature: 'พิมพ์เกียรติบัตร/บัตรประจำตัว', admin: true, area: true, group: true, school: true, user: false },
-    { feature: 'เช็คอินกิจกรรม (Check-in)', admin: true, area: true, group: true, school: true, user: true },
-  ];
+const SystemFeedbackTab: React.FC<SystemFeedbackTabProps> = ({ data, user }) => {
+    const [reports, setReports] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedReport, setSelectedReport] = useState<any | null>(null);
+    const [replyText, setReplyText] = useState('');
+    const [status, setStatus] = useState('Open');
+    const [priority, setPriority] = useState('Low');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    
+    // Notification Options
+    const [notifyEmail, setNotifyEmail] = useState(false);
+    const [notifyLine, setNotifyLine] = useState(true);
 
-  return (
-    <div className="space-y-8 animate-in fade-in pb-12">
-      
-      {/* Header */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-8 text-white shadow-lg">
-        <h1 className="text-3xl font-bold mb-2 flex items-center">
-            <FileText className="w-8 h-8 mr-3 text-blue-400" />
-            System Documentation & Manual
-        </h1>
-        <p className="text-slate-300">คู่มือสถาปัตยกรรมระบบ โครงสร้างฐานข้อมูล และขั้นตอนการดูแลรักษา (สำหรับผู้ดูแลระบบและนักพัฒนา)</p>
-        <div className="flex gap-3 mt-6">
-            <span className="bg-blue-500/20 text-blue-200 px-3 py-1 rounded-full text-xs font-mono border border-blue-500/30">Version 1.0.2</span>
-            <span className="bg-green-500/20 text-green-200 px-3 py-1 rounded-full text-xs font-mono border border-green-500/30">Status: Stable</span>
-        </div>
-      </div>
+    // Filters
+    const [filterStatus, setFilterStatus] = useState('All');
+    const [filterType, setFilterType] = useState('All');
+    const [filterPriority, setFilterPriority] = useState('All');
+    const [searchTerm, setSearchTerm] = useState('');
 
-      {/* 1. Architecture */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
-            <CloudLightning className="w-6 h-6 mr-2 text-indigo-600" />
-            1. สถาปัตยกรรมระบบ (Architecture)
-        </h2>
-        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm font-bold text-slate-700 text-center">
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-200 w-full md:w-48">
-                    <div className="text-blue-600 mb-2"><Monitor className="w-8 h-8 mx-auto"/></div>
-                    Client Side<br/>(React / GitHub Pages)
-                </div>
-                <div className="hidden md:block flex-1 border-t-2 border-dashed border-slate-300 relative top-0 h-0">
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-slate-50 px-2 text-slate-400 text-xs">JSON API</span>
-                </div>
-                <div className="md:hidden">⬇️ JSON API</div>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-green-200 w-full md:w-48">
-                    <div className="text-green-600 mb-2"><Server className="w-8 h-8 mx-auto"/></div>
-                    Server Side<br/>(Google Apps Script)
-                </div>
-                <div className="hidden md:block flex-1 border-t-2 border-dashed border-slate-300 relative top-0 h-0">
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-slate-50 px-2 text-slate-400 text-xs">Read/Write</span>
-                </div>
-                <div className="md:hidden">⬇️ Read/Write</div>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-green-200 w-full md:w-48">
-                    <div className="text-green-600 mb-2"><Database className="w-8 h-8 mx-auto"/></div>
-                    Database<br/>(Google Sheets)
-                </div>
-            </div>
-        </div>
-        <ul className="mt-4 space-y-2 text-sm text-gray-600 list-disc list-inside">
-            <li><strong>Frontend:</strong> ทำงานแบบ SPA (Single Page Application) โฮสต์บน GitHub Pages</li>
-            <li><strong>Backend:</strong> ใช้ Google Apps Script (GAS) ทำหน้าที่เป็น API Gateway รับ Request และจัดการ Logic</li>
-            <li><strong>Database:</strong> ใช้ Google Sheets เป็นฐานข้อมูลหลัก เพื่อความง่ายในการจัดการและแก้ไขข้อมูลโดยตรง</li>
-            <li><strong>Authentication:</strong> ตรวจสอบสิทธิ์ผ่าน LocalStorage และยืนยันกับฐานข้อมูล Users</li>
-        </ul>
-      </div>
+    // Quota
+    const [quota, setQuota] = useState<{ usage: number, limit: number } | null>(null);
 
-      {/* 2. Database Schema */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
-            <Database className="w-6 h-6 mr-2 text-blue-600" />
-            2. โครงสร้างฐานข้อมูล (Google Sheets Schema)
-        </h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {dbSchema.map((item, idx) => (
-                <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
-                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
-                        <span className="font-bold text-gray-700 flex items-center">
-                            <Database className="w-3 h-3 mr-2 text-gray-400"/> {item.table}
-                        </span>
-                        <span className="text-[10px] bg-white border px-2 py-0.5 rounded text-gray-500">{item.desc}</span>
+    useEffect(() => {
+        fetchReports();
+        checkQuota();
+    }, []);
+
+    const fetchReports = async () => {
+        setLoading(true);
+        try {
+            const res = await getSystemReports();
+            setReports(res || []);
+        } catch (e) {
+            console.error("Failed to fetch reports", e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const checkQuota = async () => {
+        try {
+            const res = await getLineQuota();
+            if (res.status === 'success') {
+                setQuota({ usage: res.totalUsage, limit: typeof res.value === 'number' ? res.value : 0 });
+            }
+        } catch (e) {}
+    };
+
+    const handleSelectReport = (report: any) => {
+        setSelectedReport(report);
+        setReplyText(report.AdminResponse || '');
+        setStatus(report.Status || 'Open');
+        setPriority(report.Priority || 'Low');
+        
+        // Auto-check available channels
+        setNotifyEmail(!!report.UserEmail);
+        setNotifyLine(!!report.UserLineId);
+    };
+
+    const handleQuickReply = (text: string) => {
+        setReplyText(prev => {
+            if (!prev) return text;
+            return prev + '\n' + text;
+        });
+    };
+
+    const handleSubmitResponse = async () => {
+        if (!selectedReport) return;
+        if (replyText.length > 2000) return alert('ข้อความยาวเกิน 2000 ตัวอักษร');
+
+        setIsSubmitting(true);
+        try {
+            const res = await respondToSystemReport({
+                reportId: selectedReport.ReportID,
+                response: replyText,
+                status: status,
+                priority: priority,
+                adminName: user.Name || 'Admin',
+                notifyEmail,
+                notifyLine,
+                userEmail: selectedReport.UserEmail,
+                userLineId: selectedReport.UserLineId,
+                subject: selectedReport.Subject
+            });
+
+            if (res.status === 'success') {
+                if (res.lineError) {
+                    alert(`บันทึกสำเร็จ แต่ส่ง LINE ไม่ผ่าน: ${res.lineError} (ผู้ใช้อาจบล็อกหรือไม่ได้เป็นเพื่อน)`);
+                } else {
+                    alert('บันทึกและส่งการแจ้งเตือนเรียบร้อยแล้ว');
+                }
+                setSelectedReport(null);
+                fetchReports();
+                checkQuota(); // Update quota after send
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + res.message);
+            }
+        } catch (e) {
+            alert('เกิดข้อผิดพลาดในการบันทึก');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const filteredReports = useMemo(() => {
+        return reports.filter(r => {
+            const matchesStatus = filterStatus === 'All' || r.Status === filterStatus;
+            const matchesType = filterType === 'All' || r.Type === filterType;
+            const matchesPriority = filterPriority === 'All' || (r.Priority || 'Low') === filterPriority;
+            const matchesSearch = 
+                (r.Subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (r.UserName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (r.UserID || '').toLowerCase().includes(searchTerm.toLowerCase());
+            return matchesStatus && matchesType && matchesPriority && matchesSearch;
+        }).sort((a, b) => {
+            // Sort by Priority (High > Medium > Low) then Date
+            const pMap: Record<string, number> = { 'High': 3, 'Medium': 2, 'Low': 1 };
+            const pA = pMap[a.Priority || 'Low'] || 1;
+            const pB = pMap[b.Priority || 'Low'] || 1;
+            if (pA !== pB) return pB - pA;
+            return new Date(b.Timestamp).getTime() - new Date(a.Timestamp).getTime();
+        });
+    }, [reports, filterStatus, filterType, filterPriority, searchTerm]);
+
+    const getStatusColor = (s: string) => {
+        switch(s) {
+            case 'Resolved': return 'bg-green-100 text-green-700';
+            case 'In Progress': return 'bg-blue-100 text-blue-700';
+            default: return 'bg-gray-100 text-gray-600';
+        }
+    };
+
+    const getPriorityBadge = (p: string) => {
+        switch(p) {
+            case 'High': return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">High</span>;
+            case 'Medium': return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200">Medium</span>;
+            default: return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Low</span>;
+        }
+    };
+
+    // Quota Warning Logic
+    const isQuotaLow = quota && quota.limit > 0 && quota.usage >= quota.limit * 0.9;
+    const isQuotaExceeded = quota && quota.limit > 0 && quota.usage >= quota.limit;
+
+    return (
+        <div className="space-y-6">
+            {/* Filters */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+                    <div className="relative flex-1 lg:flex-none min-w-[200px]">
+                        <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                        <input 
+                            type="text" 
+                            className="pl-9 pr-4 py-2 border rounded-lg text-sm w-full focus:ring-2 focus:ring-blue-500 outline-none"
+                            placeholder="ค้นหา..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
                     </div>
-                    <div className="p-4 bg-white">
-                        <div className="flex flex-wrap gap-1">
-                            {item.cols.map((col, cIdx) => (
-                                <span key={cIdx} className={`text-xs px-2 py-1 rounded border ${col.includes('(PK)') ? 'bg-yellow-50 text-yellow-700 border-yellow-200 font-bold' : col.includes('(FK)') ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-gray-50 text-gray-600 border-gray-100'}`}>
-                                    {col}
-                                </span>
-                            ))}
+                    
+                    <div className="flex items-center gap-1 bg-white border rounded-lg px-2 py-1">
+                        <Filter className="w-3 h-3 text-gray-400" />
+                        <select 
+                            className="text-xs bg-transparent outline-none py-1 cursor-pointer"
+                            value={filterStatus}
+                            onChange={e => setFilterStatus(e.target.value)}
+                        >
+                            <option value="All">สถานะ: ทั้งหมด</option>
+                            <option value="Open">Open</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Resolved">Resolved</option>
+                        </select>
+                    </div>
+
+                    <div className="flex items-center gap-1 bg-white border rounded-lg px-2 py-1">
+                        <AlertTriangle className="w-3 h-3 text-gray-400" />
+                        <select 
+                            className="text-xs bg-transparent outline-none py-1 cursor-pointer"
+                            value={filterPriority}
+                            onChange={e => setFilterPriority(e.target.value)}
+                        >
+                            <option value="All">ความสำคัญ: ทั้งหมด</option>
+                            <option value="High">High</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Low">Low</option>
+                        </select>
+                    </div>
+
+                    <div className="flex items-center gap-1 bg-white border rounded-lg px-2 py-1">
+                        <Lightbulb className="w-3 h-3 text-gray-400" />
+                        <select 
+                            className="text-xs bg-transparent outline-none py-1 cursor-pointer"
+                            value={filterType}
+                            onChange={e => setFilterType(e.target.value)}
+                        >
+                            <option value="All">ประเภท: ทั้งหมด</option>
+                            <option value="bug">แจ้งปัญหา (Bug)</option>
+                            <option value="suggestion">ข้อเสนอแนะ</option>
+                        </select>
+                    </div>
+                </div>
+                <button onClick={fetchReports} className="p-2 hover:bg-gray-100 rounded-full text-gray-500">
+                    <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                </button>
+            </div>
+
+            {/* Table */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">หัวข้อ</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ผู้แจ้ง</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ความสำคัญ</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">สถานะ</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">วันที่</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredReports.map((report) => (
+                            <tr 
+                                key={report.ReportID} 
+                                onClick={() => handleSelectReport(report)}
+                                className="hover:bg-blue-50 cursor-pointer transition-colors"
+                            >
+                                <td className="px-6 py-4">
+                                    <div className="flex items-center">
+                                        {report.Type === 'bug' ? <Bug className="w-4 h-4 text-red-500 mr-2 shrink-0"/> : <Lightbulb className="w-4 h-4 text-amber-500 mr-2 shrink-0"/>}
+                                        <span className="font-medium text-gray-900 line-clamp-1">{report.Subject}</span>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <div className="text-sm text-gray-900">{report.UserName}</div>
+                                    <div className="text-xs text-gray-500">{report.UserID}</div>
+                                </td>
+                                <td className="px-6 py-4">
+                                    {getPriorityBadge(report.Priority)}
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(report.Status)}`}>
+                                        {report.Status}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-right text-sm text-gray-500 whitespace-nowrap">
+                                    {new Date(report.Timestamp).toLocaleDateString('th-TH')}
+                                </td>
+                            </tr>
+                        ))}
+                        {filteredReports.length === 0 && (
+                            <tr>
+                                <td colSpan={5} className="px-6 py-10 text-center text-gray-400">ไม่พบรายการ</td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Detail & Reply Modal */}
+            {selectedReport && (
+                <div className="fixed inset-0 z-[300] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+                        <div className="p-4 border-b flex justify-between items-center bg-gray-50 shrink-0">
+                            <h3 className="font-bold text-gray-800 flex items-center">
+                                <MessageSquareWarning className="w-5 h-5 mr-2 text-blue-600"/> รายละเอียดการแจ้งปัญหา
+                            </h3>
+                            <button onClick={() => setSelectedReport(null)} className="p-1 hover:bg-gray-200 rounded-full"><X className="w-5 h-5 text-gray-500"/></button>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                            {/* User Report */}
+                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${selectedReport.Type === 'bug' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                                            {selectedReport.Type.toUpperCase()}
+                                        </span>
+                                        <span className="text-sm text-gray-500">{new Date(selectedReport.Timestamp).toLocaleString('th-TH')}</span>
+                                    </div>
+                                    {getPriorityBadge(selectedReport.Priority || 'Low')}
+                                </div>
+                                
+                                <h4 className="font-bold text-lg text-gray-900 mb-2">{selectedReport.Subject}</h4>
+                                <p className="text-gray-700 whitespace-pre-wrap text-sm leading-relaxed">{selectedReport.Detail}</p>
+                                
+                                {selectedReport.Image && (
+                                    <div className="mt-4">
+                                        <img src={selectedReport.Image} className="max-h-60 rounded-lg border border-gray-300 cursor-zoom-in" onClick={() => window.open(selectedReport.Image, '_blank')} />
+                                    </div>
+                                )}
+                                
+                                <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500 flex flex-col gap-1">
+                                    <span>ผู้แจ้ง: {selectedReport.UserName} ({selectedReport.UserID})</span>
+                                    <span>อุปกรณ์: {selectedReport.DeviceInfo}</span>
+                                </div>
+                            </div>
+
+                            {/* Admin Reply Form */}
+                            <div className="space-y-4 border-t pt-4">
+                                <h4 className="font-bold text-gray-800 flex items-center justify-between">
+                                    <span className="flex items-center"><Send className="w-4 h-4 mr-2"/> ตอบกลับผู้ใช้งาน (Admin Response)</span>
+                                    <span className={`text-xs font-medium flex items-center ${replyText.length > 2000 ? 'text-red-500' : 'text-gray-400'}`}>
+                                        <Type className="w-3 h-3 mr-1"/> {replyText.length}/2000
+                                    </span>
+                                </h4>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">สถานะ (Status)</label>
+                                        <select 
+                                            className="w-full border rounded p-2 text-sm bg-white"
+                                            value={status}
+                                            onChange={e => setStatus(e.target.value)}
+                                        >
+                                            <option value="Open">รอตรวจสอบ (Open)</option>
+                                            <option value="In Progress">กำลังดำเนินการ</option>
+                                            <option value="Resolved">แก้ไขแล้ว (Resolved)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">ความสำคัญ (Priority)</label>
+                                        <select 
+                                            className="w-full border rounded p-2 text-sm bg-white"
+                                            value={priority}
+                                            onChange={e => setPriority(e.target.value)}
+                                        >
+                                            <option value="Low">ทั่วไป (Low)</option>
+                                            <option value="Medium">ปานกลาง (Medium)</option>
+                                            <option value="High">เร่งด่วน (High)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Quick Replies */}
+                                <div className="flex flex-wrap gap-2">
+                                    {QUICK_REPLIES.map((text, idx) => (
+                                        <button 
+                                            key={idx}
+                                            onClick={() => handleQuickReply(text)}
+                                            className="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs rounded-full hover:bg-blue-100 transition-colors border border-blue-100 flex items-center"
+                                        >
+                                            <Zap className="w-3 h-3 mr-1" /> {text.length > 20 ? text.substring(0, 20) + '...' : text}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">ข้อความตอบกลับ</label>
+                                    <textarea 
+                                        className="w-full border rounded-lg p-3 text-sm h-32 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        placeholder="พิมพ์คำตอบที่ต้องการแจ้งผู้ใช้..."
+                                        value={replyText}
+                                        onChange={e => setReplyText(e.target.value)}
+                                    />
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex gap-4 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                        <label className={`flex items-center text-sm cursor-pointer ${!selectedReport.UserLineId ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={notifyLine} 
+                                                onChange={e => setNotifyLine(e.target.checked)}
+                                                disabled={!selectedReport.UserLineId}
+                                                className="w-4 h-4 rounded text-blue-600 mr-2"
+                                            />
+                                            <MessageCircle className="w-4 h-4 mr-1 text-[#06C755]"/> แจ้งเตือนทาง LINE
+                                        </label>
+                                        <label className={`flex items-center text-sm cursor-pointer ${!selectedReport.UserEmail ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={notifyEmail} 
+                                                onChange={e => setNotifyEmail(e.target.checked)}
+                                                disabled={!selectedReport.UserEmail}
+                                                className="w-4 h-4 rounded text-blue-600 mr-2"
+                                            />
+                                            <Mail className="w-4 h-4 mr-1 text-gray-600"/> แจ้งเตือนทาง Email
+                                        </label>
+                                    </div>
+
+                                    {/* Quota & Connection Warning */}
+                                    {notifyLine && (
+                                        <div className="space-y-1">
+                                            {!selectedReport.UserLineId && (
+                                                <p className="text-xs text-orange-500 flex items-center">
+                                                    <AlertCircle className="w-3 h-3 mr-1"/> ผู้ใช้ยังไม่ได้เชื่อมต่อ LINE ไม่สามารถส่งแจ้งเตือนได้
+                                                </p>
+                                            )}
+                                            {isQuotaLow && (
+                                                <p className="text-xs text-orange-600 flex items-center bg-orange-50 p-1.5 rounded border border-orange-200">
+                                                    <AlertTriangle className="w-3 h-3 mr-1"/> 
+                                                    Warning: LINE Quota ใกล้เต็ม ({quota?.usage}/{quota?.limit})
+                                                </p>
+                                            )}
+                                            {isQuotaExceeded && (
+                                                <p className="text-xs text-red-600 flex items-center bg-red-50 p-1.5 rounded border border-red-200">
+                                                    <AlertTriangle className="w-3 h-3 mr-1"/> 
+                                                    Error: LINE Quota เต็มแล้ว ไม่สามารถส่งข้อความได้
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t bg-gray-50 flex justify-end gap-3 shrink-0">
+                            <button onClick={() => setSelectedReport(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg text-sm">ปิด</button>
+                            <button 
+                                onClick={handleSubmitResponse}
+                                disabled={isSubmitting || (notifyLine && !selectedReport.UserLineId && !notifyEmail)}
+                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-bold flex items-center shadow-sm disabled:opacity-70"
+                            >
+                                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Send className="w-4 h-4 mr-2"/>}
+                                บันทึกและส่ง
+                            </button>
                         </div>
                     </div>
                 </div>
-            ))}
+            )}
         </div>
-      </div>
-
-      {/* 3. Core System Flows (New) */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
-            <Workflow className="w-6 h-6 mr-2 text-orange-500" />
-            3. กระบวนการทำงานหลัก (Core System Flows)
-        </h2>
-        <div className="space-y-6">
-            <div className="border-l-4 border-blue-500 pl-4 py-1">
-                <h3 className="font-bold text-gray-800 text-sm mb-2">3.1 อัลกอริทึมการเช็คอิน (Check-in Logic)</h3>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                    <span className="bg-gray-100 px-3 py-2 rounded-lg">1. สแกน QR Code</span>
-                    <ArrowRight className="w-4 h-4 text-gray-400"/>
-                    <span className="bg-gray-100 px-3 py-2 rounded-lg">2. ตรวจสอบพิกัด GPS (Haversine Formula)</span>
-                    <ArrowRight className="w-4 h-4 text-gray-400"/>
-                    <span className="bg-gray-100 px-3 py-2 rounded-lg">3. ตรวจสอบระยะเวลา &amp; ความจุ</span>
-                    <ArrowRight className="w-4 h-4 text-gray-400"/>
-                    <span className="bg-gray-100 px-3 py-2 rounded-lg">4. ถ่ายรูปยืนยัน (ถ้าบังคับ)</span>
-                    <ArrowRight className="w-4 h-4 text-gray-400"/>
-                    <span className="bg-green-100 text-green-700 px-3 py-2 rounded-lg border border-green-200 font-bold">5. บันทึกลงฐานข้อมูล</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                    * หากระยะห่างเกินรัศมีที่กำหนด (default 100m) ระบบจะปฏิเสธการเช็คอิน
-                </p>
-            </div>
-            
-            <div className="border-l-4 border-purple-500 pl-4 py-1">
-                <h3 className="font-bold text-gray-800 text-sm mb-2">3.2 กระบวนการออกเกียรติบัตร (Certificate Generation)</h3>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                    <span className="bg-gray-100 px-3 py-2 rounded-lg">1. ตรวจสอบสถานะทีม (Approved/Ranked)</span>
-                    <ArrowRight className="w-4 h-4 text-gray-400"/>
-                    <span className="bg-gray-100 px-3 py-2 rounded-lg">2. ดึง Config Template (ตามกลุ่ม/เขต)</span>
-                    <ArrowRight className="w-4 h-4 text-gray-400"/>
-                    <span className="bg-gray-100 px-3 py-2 rounded-lg">3. สร้าง HTML Canvas</span>
-                    <ArrowRight className="w-4 h-4 text-gray-400"/>
-                    <span className="bg-gray-100 px-3 py-2 rounded-lg">4. แปลงเป็น PDF (html2pdf)</span>
-                </div>
-            </div>
-        </div>
-      </div>
-
-      {/* 4. RBAC Matrix (New) */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
-            <Shield className="w-6 h-6 mr-2 text-red-500" />
-            4. สิทธิ์การใช้งาน (Role-Based Access Control)
-        </h2>
-        <div className="overflow-x-auto">
-            <table className="min-w-full text-xs text-left border rounded-lg">
-                <thead className="bg-gray-50 font-bold text-gray-700">
-                    <tr>
-                        <th className="px-4 py-2 border">Feature / Role</th>
-                        <th className="px-4 py-2 border text-center text-purple-600">Admin</th>
-                        <th className="px-4 py-2 border text-center text-indigo-600">Area Admin</th>
-                        <th className="px-4 py-2 border text-center text-blue-600">Group Admin</th>
-                        <th className="px-4 py-2 border text-center text-cyan-600">School Admin</th>
-                        <th className="px-4 py-2 border text-center text-gray-600">User</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rbacData.map((row, i) => (
-                        <tr key={i} className="hover:bg-gray-50">
-                            <td className="px-4 py-2 border font-medium text-gray-700">{row.feature}</td>
-                            <td className="px-4 py-2 border text-center">{row.admin ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto"/> : <XCircle className="w-4 h-4 text-gray-200 mx-auto"/>}</td>
-                            <td className="px-4 py-2 border text-center">{row.area ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto"/> : <XCircle className="w-4 h-4 text-gray-200 mx-auto"/>}</td>
-                            <td className="px-4 py-2 border text-center">{row.group ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto"/> : <XCircle className="w-4 h-4 text-gray-200 mx-auto"/>}</td>
-                            <td className="px-4 py-2 border text-center">{row.school ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto"/> : <XCircle className="w-4 h-4 text-gray-200 mx-auto"/>}</td>
-                            <td className="px-4 py-2 border text-center">{row.user ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto"/> : <XCircle className="w-4 h-4 text-gray-200 mx-auto"/>}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-      </div>
-
-      {/* 5. Integrations (New) */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
-            <Globe className="w-6 h-6 mr-2 text-blue-500" />
-            5. การเชื่อมต่อระบบภายนอก (External Integrations)
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-4 border rounded-xl bg-green-50 border-green-100 flex flex-col items-center text-center">
-                <Smartphone className="w-8 h-8 text-green-600 mb-2"/>
-                <h3 className="font-bold text-gray-800 text-sm">LINE LIFF</h3>
-                <p className="text-xs text-gray-600 mt-1">Authentication &amp; Sharing</p>
-            </div>
-            <div className="p-4 border rounded-xl bg-blue-50 border-blue-100 flex flex-col items-center text-center">
-                <Database className="w-8 h-8 text-blue-600 mb-2"/>
-                <h3 className="font-bold text-gray-800 text-sm">Google Sheets</h3>
-                <p className="text-xs text-gray-600 mt-1">Database &amp; API Backend</p>
-            </div>
-            <div className="p-4 border rounded-xl bg-yellow-50 border-yellow-100 flex flex-col items-center text-center">
-                <HardDrive className="w-8 h-8 text-yellow-600 mb-2"/>
-                <h3 className="font-bold text-gray-800 text-sm">Google Drive</h3>
-                <p className="text-xs text-gray-600 mt-1">Image Storage (Photos)</p>
-            </div>
-            <div className="p-4 border rounded-xl bg-purple-50 border-purple-100 flex flex-col items-center text-center">
-                <Map className="w-8 h-8 text-purple-600 mb-2"/>
-                <h3 className="font-bold text-gray-800 text-sm">OpenStreetMap</h3>
-                <p className="text-xs text-gray-600 mt-1">Location &amp; GPS Verification</p>
-            </div>
-        </div>
-      </div>
-
-      {/* 6. Project Structure (New) */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
-            <FolderTree className="w-6 h-6 mr-2 text-slate-600" />
-            6. โครงสร้างไฟล์โปรเจกต์ (Project Structure)
-        </h2>
-        <div className="bg-slate-900 text-slate-300 p-4 rounded-xl font-mono text-xs overflow-x-auto">
-<pre>{`src/
-├── components/          # React Components (UI)
-│   ├── admin/           # Admin-specific components
-│   ├── Dashboard.tsx    # Main Dashboard
-│   └── ...
-├── services/            # Logic & API
-│   ├── api.ts           # Google Apps Script Connection
-│   ├── liff.ts          # LINE SDK Integration
-│   └── utils.ts         # Helper Functions
-├── types.ts             # TypeScript Interfaces (Data Models)
-├── App.tsx              # Main Router & Entry Point
-└── main.tsx             # ReactDOM Render`}</pre>
-        </div>
-      </div>
-
-      {/* 7. CI/CD (New) */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
-            <GitMerge className="w-6 h-6 mr-2 text-pink-500" />
-            7. กระบวนการ Deploy อัตโนมัติ (CI/CD)
-        </h2>
-        <div className="space-y-2 text-sm text-gray-600">
-            <p>ระบบใช้ <strong>GitHub Actions</strong> ในการ Build และ Deploy อัตโนมัติเมื่อมีการ Push Code ไปยัง Branch <code>main</code></p>
-            <ol className="list-decimal list-inside space-y-1 ml-2">
-                <li>Developer Push Code &rarr; GitHub</li>
-                <li>Action Trigger: <code>npm install</code> &amp; <code>npm run build</code></li>
-                <li>Vite สร้างไฟล์ Static ในโฟลเดอร์ <code>dist/</code></li>
-                <li>Deploy ไฟล์ใน <code>dist/</code> ไปยัง Branch <code>gh-pages</code></li>
-                <li>เว็บไซต์อัปเดตอัตโนมัติ</li>
-            </ol>
-        </div>
-      </div>
-
-      {/* 8. Installation & Usage */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
-            <Terminal className="w-6 h-6 mr-2 text-slate-700" />
-            8. การติดตั้งและอัปเดต (Installation)
-        </h2>
-        <div className="space-y-4">
-            <div className="bg-slate-900 text-slate-200 p-4 rounded-xl font-mono text-sm overflow-x-auto">
-                <div className="flex gap-2 mb-2 border-b border-slate-700 pb-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                </div>
-                <p className="text-gray-500"># 1. Clone &amp; Install Dependencies</p>
-                <p>$ git clone https://github.com/noppharut5252/Checkin.git</p>
-                <p>$ cd Checkin</p>
-                <p>$ npm install</p>
-                <br/>
-                <p className="text-gray-500"># 2. Run Local Development</p>
-                <p>$ npm run dev</p>
-                <br/>
-                <p className="text-gray-500"># 3. Build &amp; Deploy to GitHub Pages</p>
-                <p>$ npm run build</p>
-                <p>$ git add .</p>
-                <p>$ git commit -m "Update system"</p>
-                <p>$ git push origin main</p>
-            </div>
-            
-            <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl">
-                <h4 className="font-bold text-orange-800 flex items-center mb-2">
-                    <AlertTriangle className="w-4 h-4 mr-2"/> ข้อควรระวัง (Important Note)
-                </h4>
-                <p className="text-sm text-orange-700 leading-relaxed">
-                    การแก้ไข <strong>code.js</strong> ใน Google Apps Script ต้องทำการ <strong>Deploy New Deployment</strong> ทุกครั้ง และนำ URL ที่ได้มาอัปเดตในไฟล์ <code>services/api.ts</code> (ตัวแปร <code>API_URL</code>) มิฉะนั้น Frontend จะยังคงเรียกใช้เวอร์ชันเก่า
-                </p>
-            </div>
-        </div>
-      </div>
-
-      {/* 9. Tech Stack */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
-            <Package className="w-6 h-6 mr-2 text-purple-600" />
-            9. เทคโนโลยีที่ใช้ (Tech Stack)
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {techStack.map((tech, idx) => (
-                <div key={idx} className="flex items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
-                    <div className="p-2 bg-white rounded-lg shadow-sm mr-3 text-gray-700">
-                        <tech.icon className="w-5 h-5"/>
-                    </div>
-                    <div>
-                        <div className="font-bold text-gray-800 text-sm">{tech.name}</div>
-                        <div className="text-[10px] text-gray-500">{tech.desc}</div>
-                    </div>
-                </div>
-            ))}
-        </div>
-      </div>
-
-      {/* 10. Roadmap & Limitations (New) */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center border-b pb-2">
-            <Zap className="w-6 h-6 mr-2 text-yellow-500" />
-            10. แผนพัฒนาและข้อจำกัด (Roadmap & Limitations)
-        </h2>
-        
-        <div className="space-y-4">
-            <div className="bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-xl">
-                <h3 className="font-bold text-orange-800 text-sm flex items-center mb-2">
-                    <AlertTriangle className="w-4 h-4 mr-2"/> ข้อจำกัดในเวอร์ชันปัจจุบัน (Current Limitations v1.0.2)
-                </h3>
-                <ul className="list-disc list-inside text-sm text-orange-700 space-y-1 ml-1">
-                    <li><strong>ระบบเกียรติบัตร (Certificates):</strong> ฟังก์ชันการออกเกียรติบัตรอัตโนมัติ (Generate PDF) และการตั้งค่า Template ยังไม่เปิดใช้งานในเวอร์ชันนี้ อยู่ระหว่างการพัฒนา</li>
-                    <li><strong>การนำเข้าข้อมูล (Import):</strong> การนำเข้าข้อมูลรายชื่อทีมและผู้เข้าแข่งขันรองรับเฉพาะไฟล์ CSV รูปแบบมาตรฐานเท่านั้น ยังไม่รองรับ Excel (.xlsx) โดยตรง</li>
-                    <li><strong>การแจ้งเตือน (Notifications):</strong> ยังไม่มีระบบแจ้งเตือนผ่าน LINE OA อัตโนมัติเมื่อมีการเปลี่ยนแปลงข้อมูล</li>
-                </ul>
-            </div>
-
-            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-xl">
-                <h3 className="font-bold text-blue-800 text-sm flex items-center mb-2">
-                    <Rocket className="w-4 h-4 mr-2"/> สิ่งที่จะเพิ่มเติมในเวอร์ชันถัดไป (Future Roadmap v1.1.0+)
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-700">
-                    <div>
-                        <ul className="list-disc list-inside space-y-1 ml-1">
-                            <li>ระบบออกแบบและพิมพ์เกียรติบัตรออนไลน์ (Certificate Builder)</li>
-                            <li>ระบบประเมินผลและให้คะแนนกรรมการผ่านมือถือ (Mobile Scoring)</li>
-                            <li>Dashboard สรุปผลการแข่งขันแบบ Real-time แยกตามเขตพื้นที่</li>
-                        </ul>
-                    </div>
-                    <div>
-                        <ul className="list-disc list-inside space-y-1 ml-1">
-                            <li>รองรับการแนบไฟล์เอกสารหลักฐานการสมัคร (PDF Upload)</li>
-                            <li>ระบบจัดการสิทธิ์ผู้ใช้งานที่ละเอียดขึ้น (Granular Permissions)</li>
-                            <li>การปรับแต่งธีมสีของแอปพลิเคชัน (Theme Customization)</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-      </div>
-
-    </div>
-  );
+    );
 };
 
-export default SystemDocsTab;
+export default SystemFeedbackTab;

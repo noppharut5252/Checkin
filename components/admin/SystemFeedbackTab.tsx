@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { getSystemReports, respondToSystemReport } from '../../services/api';
-import { Search, Filter, MessageSquareWarning, Bug, Lightbulb, CheckCircle, Clock, AlertCircle, Mail, MessageCircle, Send, Loader2, X, RefreshCw } from 'lucide-react';
+import { Search, Filter, MessageSquareWarning, Bug, Lightbulb, CheckCircle, Clock, AlertCircle, Mail, MessageCircle, Send, Loader2, X, RefreshCw, Type } from 'lucide-react';
 import { User } from '../../types';
 
 interface SystemFeedbackTabProps {
@@ -54,9 +54,12 @@ const SystemFeedbackTab: React.FC<SystemFeedbackTabProps> = ({ data, user }) => 
 
     const handleSubmitResponse = async () => {
         if (!selectedReport) return;
+        if (replyText.length > 2000) return alert('ข้อความยาวเกิน 2000 ตัวอักษร');
+
         setIsSubmitting(true);
         try {
-            await respondToSystemReport({
+            // Updated: respondToSystemReport now returns an object with lineError
+            const res = await respondToSystemReport({
                 reportId: selectedReport.ReportID,
                 response: replyText,
                 status: status,
@@ -68,9 +71,18 @@ const SystemFeedbackTab: React.FC<SystemFeedbackTabProps> = ({ data, user }) => 
                 userLineId: selectedReport.UserLineId,
                 subject: selectedReport.Subject
             });
-            alert('บันทึกและส่งการแจ้งเตือนเรียบร้อยแล้ว');
-            setSelectedReport(null);
-            fetchReports();
+
+            if (res.status === 'success') {
+                if (res.lineError) {
+                    alert(`บันทึกสำเร็จ แต่ส่ง LINE ไม่ผ่าน: ${res.lineError} (ผู้ใช้อาจบล็อกหรือไม่ได้เป็นเพื่อน)`);
+                } else {
+                    alert('บันทึกและส่งการแจ้งเตือนเรียบร้อยแล้ว');
+                }
+                setSelectedReport(null);
+                fetchReports();
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + res.message);
+            }
         } catch (e) {
             alert('เกิดข้อผิดพลาดในการบันทึก');
         } finally {
@@ -205,8 +217,11 @@ const SystemFeedbackTab: React.FC<SystemFeedbackTabProps> = ({ data, user }) => 
 
                             {/* Admin Reply Form */}
                             <div className="space-y-4 border-t pt-4">
-                                <h4 className="font-bold text-gray-800 flex items-center">
-                                    <Send className="w-4 h-4 mr-2"/> ตอบกลับผู้ใช้งาน (Admin Response)
+                                <h4 className="font-bold text-gray-800 flex items-center justify-between">
+                                    <span className="flex items-center"><Send className="w-4 h-4 mr-2"/> ตอบกลับผู้ใช้งาน (Admin Response)</span>
+                                    <span className={`text-xs font-medium flex items-center ${replyText.length > 2000 ? 'text-red-500' : 'text-gray-400'}`}>
+                                        <Type className="w-3 h-3 mr-1"/> {replyText.length}/2000
+                                    </span>
                                 </h4>
                                 
                                 <div className="grid grid-cols-2 gap-4">
@@ -268,6 +283,17 @@ const SystemFeedbackTab: React.FC<SystemFeedbackTabProps> = ({ data, user }) => 
                                         <Mail className="w-4 h-4 mr-1 text-gray-600"/> แจ้งเตือนทาง Email
                                     </label>
                                 </div>
+                                
+                                {notifyLine && !selectedReport.UserLineId && (
+                                    <p className="text-xs text-orange-500 mt-1 flex items-center">
+                                        <AlertCircle className="w-3 h-3 mr-1"/> ผู้ใช้ยังไม่ได้เชื่อมต่อ LINE ไม่สามารถส่งแจ้งเตือนได้
+                                    </p>
+                                )}
+                                {notifyLine && selectedReport.UserLineId && (
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        * หากผู้ใช้บล็อก LINE Bot จะไม่สามารถส่งข้อความได้
+                                    </p>
+                                )}
                             </div>
                         </div>
 
@@ -275,7 +301,7 @@ const SystemFeedbackTab: React.FC<SystemFeedbackTabProps> = ({ data, user }) => 
                             <button onClick={() => setSelectedReport(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg text-sm">ปิด</button>
                             <button 
                                 onClick={handleSubmitResponse}
-                                disabled={isSubmitting}
+                                disabled={isSubmitting || (notifyLine && !selectedReport.UserLineId && !notifyEmail)}
                                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-bold flex items-center shadow-sm disabled:opacity-70"
                             >
                                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Send className="w-4 h-4 mr-2"/>}

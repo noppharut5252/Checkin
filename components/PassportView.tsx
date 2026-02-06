@@ -169,7 +169,14 @@ const RedemptionModal = ({ isOpen, onClose, mission, user }: { isOpen: boolean, 
 
     useEffect(() => {
         if (isOpen && mission) {
-            const redeemPayload = `REDEEM|${user.userid}|${mission.id}|${Date.now()}`;
+            // Helper to clean strings for pipe delimiter
+            const clean = (s: string | undefined) => (s || '').replace(/\|/g, ' ').trim();
+            const fullName = `${user.Prefix || ''} ${user.Name || ''} ${user.Surname || ''}`.trim();
+            
+            // Format: REDEEM|UserID|MissionID|Timestamp|Name|Role|School
+            // This allows the scanner to identify user immediately even without DB sync
+            const redeemPayload = `REDEEM|${clean(user.userid || user.UserID)}|${clean(mission.id)}|${Date.now()}|${clean(fullName)}|${clean(user.Role || user.level)}|${clean(user.SchoolID)}`;
+            
             QRCode.toDataURL(redeemPayload, { margin: 1, width: 300, color: { dark: '#000000', light: '#ffffff' } })
                 .then(setQrSrc);
         }

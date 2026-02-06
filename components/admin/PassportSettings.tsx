@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppData, PassportConfig, PassportMission, PassportRequirement, CheckInLog, User, RedemptionLog } from '../../types';
-import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, Eye, EyeOff, LayoutList, Split, TrendingUp, PieChart } from 'lucide-react';
+import { Save, Plus, Trash2, Calendar, Target, Award, ListPlus, Loader2, CheckCircle, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Image as ImageIcon, Copy, BarChart3, Download, Search, School as SchoolIcon, Clock, Check, Gift, ScanLine, Eye, EyeOff, LayoutList, Split, TrendingUp, PieChart, Volume2, RefreshCcw, Timer } from 'lucide-react';
 import { savePassportConfig, uploadImage, getCheckInLogs, getAllUsers, redeemReward, getRedemptions } from '../../services/api';
 import { resizeImage } from '../../services/utils';
 import SearchableSelect from '../SearchableSelect';
@@ -12,6 +12,16 @@ interface PassportSettingsProps {
     data: AppData;
     onDataUpdate: () => void;
 }
+
+// Sound Helper
+const playSound = (type: 'success' | 'error' | 'redeem') => {
+    const sounds = {
+        success: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3', // Ping
+        error: 'https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3', // Error buzz
+        redeem: 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3' // Victory
+    };
+    new Audio(sounds[type]).play().catch(() => {});
+};
 
 const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate }) => {
     const [config, setConfig] = useState<PassportConfig>(data.passportConfig || { missions: [] });
@@ -25,7 +35,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [allRedemptions, setAllRedemptions] = useState<RedemptionLog[]>([]);
     const [isLoadingStats, setIsLoadingStats] = useState(false);
-    const [isLoadingDashboard, setIsLoadingDashboard] = useState(false); // New Loading State
+    const [isLoadingDashboard, setIsLoadingDashboard] = useState(false); 
     const [isDataLoaded, setIsDataLoaded] = useState(false);
     
     // UI State
@@ -36,8 +46,9 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
     
     // Scanner State
     const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [isContinuousMode, setIsContinuousMode] = useState(false); // New: Continuous Mode
     const [verifyResult, setVerifyResult] = useState<{
-        status: 'valid' | 'invalid' | 'redeemed' | 'not_completed' | 'out_of_stock';
+        status: 'valid' | 'invalid' | 'redeemed' | 'not_completed' | 'out_of_stock' | 'expired';
         user?: User;
         mission?: PassportMission;
         redemption?: RedemptionLog;
@@ -56,9 +67,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
 
     // Fetch Logs & Users
     const loadData = async () => {
-        // If data is already loaded, just return (unless forced)
         if (isDataLoaded) return;
-        
         setIsLoadingStats(true);
         try {
             const [logsRes, usersRes, redemptionsRes] = await Promise.all([
@@ -95,25 +104,16 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         }
     }, [viewingStatsFor, isScannerOpen]);
 
+    // ... (Keep existing Logic functions: checkUserCompletion, getCompletedUsers, dashboardStats) ...
     // --- Logic: Check Mission Completion ---
     const checkUserCompletion = (userId: string, mission: PassportMission) => {
         const userLogs = allLogs.filter(l => l.UserID === userId);
-        
-        // Date Scope Logic
-        const targetLogs = mission.dateScope === 'all_time' 
-            ? userLogs 
-            : userLogs.filter(l => l.Timestamp.startsWith(mission.date));
-
-        // Logic AND/OR
+        const targetLogs = mission.dateScope === 'all_time' ? userLogs : userLogs.filter(l => l.Timestamp.startsWith(mission.date));
         const logic = mission.conditionLogic || 'AND';
-
-        // Check individual requirements
         const results = mission.requirements.map(req => {
-            if (req.type === 'specific_activity') {
-                return targetLogs.some(l => String(l.ActivityID) === String(req.targetId));
-            } else if (req.type === 'total_count') {
-                return targetLogs.length >= req.targetValue;
-            } else if (req.type === 'category_count') {
+            if (req.type === 'specific_activity') return targetLogs.some(l => String(l.ActivityID) === String(req.targetId));
+            else if (req.type === 'total_count') return targetLogs.length >= req.targetValue;
+            else if (req.type === 'category_count') {
                 const catLogs = targetLogs.filter(l => {
                     const act = data.activities.find(a => String(a.id) === String(l.ActivityID));
                     return act?.category === req.targetId;
@@ -122,111 +122,60 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
             }
             return false;
         });
-
-        if (logic === 'OR') {
-            // Match Any
-            return results.some(r => r === true);
-        } else {
-            // Match All (Default)
-            return results.every(r => r === true);
-        }
+        if (logic === 'OR') return results.some(r => r === true);
+        else return results.every(r => r === true);
     };
 
-    // --- Logic: Get List of Completed Users (Batch) ---
     const getCompletedUsers = (mission: PassportMission) => {
         if (allLogs.length === 0 || mission.requirements.length === 0) return [];
-
         const logsByUser: Record<string, CheckInLog[]> = {};
-        allLogs.forEach(log => {
-            if (!logsByUser[log.UserID]) logsByUser[log.UserID] = [];
-            logsByUser[log.UserID].push(log);
-        });
-
+        allLogs.forEach(log => { if (!logsByUser[log.UserID]) logsByUser[log.UserID] = []; logsByUser[log.UserID].push(log); });
         const completedUsers: { user: User | undefined, userId: string, timestamp: string }[] = [];
         const logic = mission.conditionLogic || 'AND';
-
         Object.keys(logsByUser).forEach(userId => {
             const userLogs = logsByUser[userId];
-            
-            // Date Scope Logic
-            const targetLogs = mission.dateScope === 'all_time' 
-                ? userLogs 
-                : userLogs.filter(l => l.Timestamp.startsWith(mission.date));
-
+            const targetLogs = mission.dateScope === 'all_time' ? userLogs : userLogs.filter(l => l.Timestamp.startsWith(mission.date));
             let lastReqTimestamp = 0;
             let satisfiedCount = 0;
-
             mission.requirements.forEach(req => {
-                let satisfied = false;
-                let reqTime = 0;
-
+                let satisfied = false; let reqTime = 0;
                 if (req.type === 'specific_activity') {
                     const match = targetLogs.find(l => String(l.ActivityID) === String(req.targetId));
-                    if (match) {
-                        satisfied = true;
-                        reqTime = new Date(match.Timestamp).getTime();
-                    }
+                    if (match) { satisfied = true; reqTime = new Date(match.Timestamp).getTime(); }
                 } else if (req.type === 'total_count') {
                     if (targetLogs.length >= req.targetValue) {
                         satisfied = true;
                         const sorted = targetLogs.sort((a,b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
-                        const targetLog = sorted[req.targetValue - 1];
-                        if (targetLog) reqTime = new Date(targetLog.Timestamp).getTime();
+                        const targetLog = sorted[req.targetValue - 1]; if (targetLog) reqTime = new Date(targetLog.Timestamp).getTime();
                     }
                 } else if (req.type === 'category_count') {
-                    const catLogs = targetLogs.filter(l => {
-                        const act = data.activities.find(a => String(a.id) === String(l.ActivityID));
-                        return act?.category === req.targetId;
-                    });
+                    const catLogs = targetLogs.filter(l => { const act = data.activities.find(a => String(a.id) === String(l.ActivityID)); return act?.category === req.targetId; });
                     if (catLogs.length >= req.targetValue) {
                         satisfied = true;
                         const sorted = catLogs.sort((a,b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
-                        const targetLog = sorted[req.targetValue - 1];
-                        if (targetLog) reqTime = new Date(targetLog.Timestamp).getTime();
+                        const targetLog = sorted[req.targetValue - 1]; if (targetLog) reqTime = new Date(targetLog.Timestamp).getTime();
                     }
                 }
-
-                if (satisfied) {
-                    satisfiedCount++;
-                    if (reqTime > lastReqTimestamp) lastReqTimestamp = reqTime;
-                }
+                if (satisfied) { satisfiedCount++; if (reqTime > lastReqTimestamp) lastReqTimestamp = reqTime; }
             });
-
-            const isComplete = logic === 'OR' 
-                ? satisfiedCount > 0 
-                : satisfiedCount === mission.requirements.length;
-
+            const isComplete = logic === 'OR' ? satisfiedCount > 0 : satisfiedCount === mission.requirements.length;
             if (isComplete) {
                 const userInfo = allUsers.find(u => u.UserID === userId);
-                completedUsers.push({
-                    userId,
-                    user: userInfo,
-                    timestamp: new Date(lastReqTimestamp).toISOString()
-                });
+                completedUsers.push({ userId, user: userInfo, timestamp: new Date(lastReqTimestamp).toISOString() });
             }
         });
-
-        // Sort by completion time (newest first)
         return completedUsers.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     };
 
-    // --- Dashboard Data Calculation ---
     const dashboardStats = useMemo(() => {
         if (!isDataLoaded) return null;
-        
         const totalRedemptions = allRedemptions.length;
         const today = new Date().toISOString().split('T')[0];
         const todayRedemptions = allRedemptions.filter(r => r.Timestamp.startsWith(today)).length;
-        
         const missionStats = config.missions.map(m => {
             const count = allRedemptions.filter(r => r.MissionID === m.id).length;
-            return {
-                name: m.title,
-                count: count,
-                color: m.rewardColor
-            };
+            return { name: m.title, count: count, color: m.rewardColor };
         }).sort((a, b) => b.count - a.count);
-
         return { totalRedemptions, todayRedemptions, missionStats };
     }, [allRedemptions, config.missions, isDataLoaded]);
 
@@ -237,15 +186,26 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         // Format: REDEEM|UserID|MissionID|Timestamp
         const parts = code.split('|');
         
-        if (parts[0] !== 'REDEEM' || parts.length < 3) {
+        if (parts[0] !== 'REDEEM' || parts.length < 4) { // Increased length check for timestamp
+            playSound('error');
             setVerifyResult({ status: 'invalid', message: 'QR Code ไม่ถูกต้อง (รูปแบบผิด)' });
             return;
         }
 
-        const [_, userId, missionId] = parts;
+        const [_, userId, missionId, timestamp] = parts;
         
+        // 1. Check Expiration (5 Minutes)
+        const qrTime = parseInt(timestamp);
+        const now = Date.now();
+        if (now - qrTime > 5 * 60 * 1000) { // 5 minutes in ms
+            playSound('error');
+            setVerifyResult({ status: 'expired', message: 'QR Code หมดอายุ (เกิน 5 นาที) โปรดให้นักเรียนรีเฟรชหน้าจอ' });
+            return;
+        }
+
         const mission = config.missions.find(m => m.id === missionId);
         if (!mission) {
+            playSound('error');
             setVerifyResult({ status: 'invalid', message: 'ไม่พบภารกิจนี้ในระบบ' });
             return;
         }
@@ -256,6 +216,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         if (mission.maxRedemptions && mission.maxRedemptions > 0) {
             const currentRedeemed = allRedemptions.filter(r => r.MissionID === missionId).length;
             if (currentRedeemed >= mission.maxRedemptions) {
+                playSound('error');
                 setVerifyResult({ status: 'out_of_stock', user, mission, message: 'ของรางวัลหมดแล้ว (Out of Stock)' });
                 return;
             }
@@ -264,6 +225,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         // Check if already redeemed
         const existingRedemption = allRedemptions.find(r => r.UserID === userId && r.MissionID === missionId);
         if (existingRedemption) {
+            playSound('error'); // Or separate sound for already redeemed
             setVerifyResult({ status: 'redeemed', user, mission, redemption: existingRedemption });
             return;
         }
@@ -271,11 +233,13 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         // Check completion status (Security Check)
         const isComplete = checkUserCompletion(userId, mission);
         if (!isComplete) {
+            playSound('error');
             setVerifyResult({ status: 'not_completed', user, mission, message: 'ผู้ใช้ยังทำภารกิจไม่ครบเงื่อนไข' });
             return;
         }
 
         // Valid and Ready
+        playSound('success');
         setVerifyResult({ status: 'valid', user, mission });
     };
 
@@ -283,134 +247,57 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         if (!verifyResult || !verifyResult.user || !verifyResult.mission) return;
         
         const { user, mission } = verifyResult;
-        setSavingRedemption(user.UserID); // use for loading state
+        setSavingRedemption(user.UserID); 
         
         try {
             const res = await redeemReward(user.UserID, mission.id);
             if (res.status === 'success') {
                 const newLog = { UserID: user.UserID, MissionID: mission.id, Timestamp: new Date().toISOString() };
                 setAllRedemptions(prev => [...prev, newLog]);
-                setVerifyResult({ ...verifyResult, status: 'redeemed', redemption: newLog });
-                setAlertMessage({ type: 'success', text: 'บันทึกการแจกรางวัลสำเร็จ' });
-                // Play Success Sound
-                new Audio('https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3').play().catch(()=>{});
+                playSound('redeem');
+                
+                // Continuous Mode Logic
+                if (isContinuousMode) {
+                    setVerifyResult(null); // Close modal immediately
+                    setSavingRedemption(null);
+                    setAlertMessage({ type: 'success', text: `แจกรางวัลให้ ${user.Name} สำเร็จ!` });
+                    // Re-open scanner after short delay
+                    setTimeout(() => setIsScannerOpen(true), 500);
+                } else {
+                    setVerifyResult({ ...verifyResult, status: 'redeemed', redemption: newLog });
+                    setAlertMessage({ type: 'success', text: 'บันทึกการแจกรางวัลสำเร็จ' });
+                    setSavingRedemption(null);
+                }
             } else {
                 alert('บันทึกไม่สำเร็จ: ' + res.message);
+                setSavingRedemption(null);
             }
         } catch (e) {
             alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
-        } finally {
             setSavingRedemption(null);
         }
     };
 
-    const handleSave = async () => {
-        setIsSaving(true);
-        try {
-            await savePassportConfig(config);
-            setAlertMessage({ type: 'success', text: 'บันทึกการตั้งค่าเรียบร้อยแล้ว' });
-            onDataUpdate();
-        } catch (e) {
-            setAlertMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการบันทึก' });
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleRedeem = async (userId: string, missionId: string) => {
-        if (!confirm('ยืนยันว่าผู้ใช้นี้ได้รับรางวัลแล้ว?')) return;
-        setSavingRedemption(userId);
-        try {
-            const res = await redeemReward(userId, missionId);
-            if (res.status === 'success') {
-                // Update local state optimistically
-                setAllRedemptions(prev => [...prev, { UserID: userId, MissionID: missionId, Timestamp: new Date().toISOString() }]);
-            } else {
-                alert('บันทึกไม่สำเร็จ: ' + res.message);
-            }
-        } catch (e) {
-            alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
-        } finally {
-            setSavingRedemption(null);
-        }
-    };
-
-    // CRUD
-    const addMission = () => {
-        const newMission: PassportMission = { 
-            id: `m-${Date.now()}`, 
-            date: new Date().toISOString().split('T')[0], 
-            title: 'ภารกิจใหม่', 
-            requirements: [], 
-            rewardColor: '#F59E0B', 
-            rewardLabel: 'Completed', 
-            dateScope: 'specific_date',
-            isVisible: true,
-            conditionLogic: 'AND',
-            maxRedemptions: 0
-        };
-        setConfig(prev => ({ missions: [...prev.missions, newMission] }));
-        setActiveMissionId(newMission.id);
-    };
-    const updateMission = (id: string, field: keyof PassportMission, value: any) => {
-        setConfig(prev => ({ missions: prev.missions.map(m => m.id === id ? { ...m, [field]: value } : m) }));
-    };
-    const duplicateMission = (mission: PassportMission) => {
-        const newMission: PassportMission = { ...mission, id: `m-${Date.now()}`, title: `${mission.title} (Copy)`, requirements: mission.requirements.map(r => ({ ...r, id: `r-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` })) };
-        setConfig(prev => ({ missions: [...prev.missions, newMission] }));
-        setActiveMissionId(newMission.id);
-        setAlertMessage({ type: 'success', text: 'คัดลอกภารกิจแล้ว' });
-    };
-    const deleteMission = (id: string) => {
-        if(!confirm('ยืนยันการลบภารกิจนี้?')) return;
-        setConfig(prev => ({ missions: prev.missions.filter(m => m.id !== id) }));
-        if (activeMissionId === id) setActiveMissionId(null);
-    };
-    const moveMission = (index: number, direction: 'up' | 'down') => {
-        const newMissions = [...config.missions];
-        if (direction === 'up' && index > 0) [newMissions[index], newMissions[index - 1]] = [newMissions[index - 1], newMissions[index]];
-        else if (direction === 'down' && index < newMissions.length - 1) [newMissions[index], newMissions[index + 1]] = [newMissions[index + 1], newMissions[index]];
-        setConfig(prev => ({ ...prev, missions: newMissions }));
-    };
-    const addRequirement = (missionId: string) => {
-        const newReq: PassportRequirement = { id: `r-${Date.now()}`, type: 'specific_activity', label: 'เข้าร่วมกิจกรรม...', targetValue: 1 };
-        setConfig(prev => ({ missions: prev.missions.map(m => m.id === missionId ? { ...m, requirements: [...m.requirements, newReq] } : m) }));
-    };
-    const updateRequirement = (missionId: string, reqId: string, field: keyof PassportRequirement, value: any) => {
-        setConfig(prev => ({ missions: prev.missions.map(m => { if (m.id !== missionId) return m; return { ...m, requirements: m.requirements.map(r => r.id === reqId ? { ...r, [field]: value } : r) }; }) }));
-    };
-    const removeRequirement = (missionId: string, reqId: string) => {
-        setConfig(prev => ({ missions: prev.missions.map(m => { if (m.id !== missionId) return m; return { ...m, requirements: m.requirements.filter(r => r.id !== reqId) }; }) }));
-    };
-    const moveRequirement = (missionId: string, index: number, direction: 'up' | 'down') => {
-        setConfig(prev => ({ missions: prev.missions.map(m => { if (m.id !== missionId) return m; const newReqs = [...m.requirements]; if (direction === 'up' && index > 0) [newReqs[index], newReqs[index - 1]] = [newReqs[index - 1], newReqs[index]]; else if (direction === 'down' && index < newReqs.length - 1) [newReqs[index], newReqs[index + 1]] = [newReqs[index + 1], newReqs[index]]; return { ...m, requirements: newReqs }; }) }));
-    };
-    const handleStampUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !activeMissionId) return;
-        setIsUploading(true);
-        try { const base64 = await resizeImage(file, 300, 300, 0.9, 'image/png'); const res = await uploadImage(base64, `stamp_${Date.now()}.png`); if (res.status === 'success' && res.fileUrl) updateMission(activeMissionId, 'stampImage', res.fileUrl); else alert('Upload failed'); } catch (err) { console.error(err); alert('Error uploading stamp'); } finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
-    };
+    // ... (Keep existing CRUD handlers: handleSave, handleRedeem, addMission, etc.) ...
+    const handleSave = async () => { setIsSaving(true); try { await savePassportConfig(config); setAlertMessage({ type: 'success', text: 'บันทึกการตั้งค่าเรียบร้อยแล้ว' }); onDataUpdate(); } catch (e) { setAlertMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการบันทึก' }); } finally { setIsSaving(false); } };
+    const handleRedeem = async (userId: string, missionId: string) => { if (!confirm('ยืนยันว่าผู้ใช้นี้ได้รับรางวัลแล้ว?')) return; setSavingRedemption(userId); try { const res = await redeemReward(userId, missionId); if (res.status === 'success') { setAllRedemptions(prev => [...prev, { UserID: userId, MissionID: missionId, Timestamp: new Date().toISOString() }]); } else { alert('บันทึกไม่สำเร็จ: ' + res.message); } } catch (e) { alert('เกิดข้อผิดพลาดในการเชื่อมต่อ'); } finally { setSavingRedemption(null); } };
+    const addMission = () => { const newMission: PassportMission = { id: `m-${Date.now()}`, date: new Date().toISOString().split('T')[0], title: 'ภารกิจใหม่', requirements: [], rewardColor: '#F59E0B', rewardLabel: 'Completed', dateScope: 'specific_date', isVisible: true, conditionLogic: 'AND', maxRedemptions: 0 }; setConfig(prev => ({ missions: [...prev.missions, newMission] })); setActiveMissionId(newMission.id); };
+    const updateMission = (id: string, field: keyof PassportMission, value: any) => { setConfig(prev => ({ missions: prev.missions.map(m => m.id === id ? { ...m, [field]: value } : m) })); };
+    const duplicateMission = (mission: PassportMission) => { const newMission: PassportMission = { ...mission, id: `m-${Date.now()}`, title: `${mission.title} (Copy)`, requirements: mission.requirements.map(r => ({ ...r, id: `r-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` })) }; setConfig(prev => ({ missions: [...prev.missions, newMission] })); setActiveMissionId(newMission.id); setAlertMessage({ type: 'success', text: 'คัดลอกภารกิจแล้ว' }); };
+    const deleteMission = (id: string) => { if(!confirm('ยืนยันการลบภารกิจนี้?')) return; setConfig(prev => ({ missions: prev.missions.filter(m => m.id !== id) })); if (activeMissionId === id) setActiveMissionId(null); };
+    const moveMission = (index: number, direction: 'up' | 'down') => { const newMissions = [...config.missions]; if (direction === 'up' && index > 0) [newMissions[index], newMissions[index - 1]] = [newMissions[index - 1], newMissions[index]]; else if (direction === 'down' && index < newMissions.length - 1) [newMissions[index], newMissions[index + 1]] = [newMissions[index + 1], newMissions[index]]; setConfig(prev => ({ ...prev, missions: newMissions })); };
+    const addRequirement = (missionId: string) => { const newReq: PassportRequirement = { id: `r-${Date.now()}`, type: 'specific_activity', label: 'เข้าร่วมกิจกรรม...', targetValue: 1 }; setConfig(prev => ({ missions: prev.missions.map(m => m.id === missionId ? { ...m, requirements: [...m.requirements, newReq] } : m) })); };
+    const updateRequirement = (missionId: string, reqId: string, field: keyof PassportRequirement, value: any) => { setConfig(prev => ({ missions: prev.missions.map(m => { if (m.id !== missionId) return m; return { ...m, requirements: m.requirements.map(r => r.id === reqId ? { ...r, [field]: value } : r) }; }) })); };
+    const removeRequirement = (missionId: string, reqId: string) => { setConfig(prev => ({ missions: prev.missions.map(m => { if (m.id !== missionId) return m; return { ...m, requirements: m.requirements.filter(r => r.id !== reqId) }; }) })); };
+    const moveRequirement = (missionId: string, index: number, direction: 'up' | 'down') => { setConfig(prev => ({ missions: prev.missions.map(m => { if (m.id !== missionId) return m; const newReqs = [...m.requirements]; if (direction === 'up' && index > 0) [newReqs[index], newReqs[index - 1]] = [newReqs[index - 1], newReqs[index]]; else if (direction === 'down' && index < newReqs.length - 1) [newReqs[index], newReqs[index + 1]] = [newReqs[index + 1], newReqs[index]]; return { ...m, requirements: newReqs }; }) })); };
+    const handleStampUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file || !activeMissionId) return; setIsUploading(true); try { const base64 = await resizeImage(file, 300, 300, 0.9, 'image/png'); const res = await uploadImage(base64, `stamp_${Date.now()}.png`); if (res.status === 'success' && res.fileUrl) updateMission(activeMissionId, 'stampImage', res.fileUrl); else alert('Upload failed'); } catch (err) { console.error(err); alert('Error uploading stamp'); } finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; } };
     const removeStampImage = (missionId: string) => updateMission(missionId, 'stampImage', '');
-
-    const downloadStatsCSV = (userList: any[], missionTitle: string) => {
-        const headers = ['UserID', 'Name', 'School', 'CompletedTime', 'Reward', 'RedeemedStatus', 'RedeemedTime'];
-        const rows = userList.map(u => {
-            const redemption = allRedemptions.find(r => r.UserID === u.userId && r.MissionID === viewingStatsFor?.id);
-            return [
-                u.userId, `"${u.user?.Name || u.userId}"`, `"${u.user?.SchoolID || '-'}"`, `"${new Date(u.timestamp).toLocaleString('th-TH')}"`, `"${viewingStatsFor?.rewardLabel}"`, redemption ? 'Received' : 'Pending', redemption ? `"${new Date(redemption.Timestamp).toLocaleString('th-TH')}"` : ''
-            ];
-        });
-        const csvContent = "\uFEFF" + [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `completed_users_${missionTitle.substring(0,10)}_${Date.now()}.csv`; document.body.appendChild(link); link.click(); document.body.removeChild(link);
-    };
-
+    const downloadStatsCSV = (userList: any[], missionTitle: string) => { const headers = ['UserID', 'Name', 'School', 'CompletedTime', 'Reward', 'RedeemedStatus', 'RedeemedTime']; const rows = userList.map(u => { const redemption = allRedemptions.find(r => r.UserID === u.userId && r.MissionID === viewingStatsFor?.id); return [ u.userId, `"${u.user?.Name || u.userId}"`, `"${u.user?.SchoolID || '-'}"`, `"${new Date(u.timestamp).toLocaleString('th-TH')}"`, `"${viewingStatsFor?.rewardLabel}"`, redemption ? 'Received' : 'Pending', redemption ? `"${new Date(redemption.Timestamp).toLocaleString('th-TH')}"` : '' ]; }); const csvContent = "\uFEFF" + [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n'); const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `completed_users_${missionTitle.substring(0,10)}_${Date.now()}.csv`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const activityOptions = data.activities.map(a => ({ label: a.name, value: a.id }));
     const categoryOptions = Array.from(new Set(data.activities.map(a => a.category))).map(c => ({ label: c, value: c }));
     const activeMission = config.missions.find(m => m.id === activeMissionId);
 
-    // --- Components: Verification Modal ---
+    // --- Components: Verification Modal (Updated) ---
     const VerificationModal = () => {
         if (!verifyResult) return null;
         
@@ -422,6 +309,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         if (status === 'valid') { color = 'green'; Icon = CheckCircle; title = 'พร้อมแจกรางวัล'; }
         else if (status === 'redeemed') { color = 'blue'; Icon = Check; title = 'รับไปแล้ว'; }
         else if (status === 'out_of_stock') { color = 'purple'; Icon = X; title = 'ของรางวัลหมด'; }
+        else if (status === 'expired') { color = 'orange'; Icon = Timer; title = 'QR Code หมดอายุ'; }
         else { color = 'red'; Icon = AlertTriangle; title = 'ไม่สามารถแจกได้'; }
 
         return (
@@ -463,13 +351,35 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
                         )}
 
                         {status === 'valid' && (
+                            <>
+                                <button 
+                                    onClick={confirmRedemptionFromScan}
+                                    disabled={!!savingRedemption}
+                                    className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-200 active:scale-95 transition-all flex items-center justify-center"
+                                >
+                                    {savingRedemption ? <Loader2 className="w-5 h-5 animate-spin"/> : <Gift className="w-5 h-5 mr-2"/>}
+                                    ยืนยันการแจกรางวัล
+                                </button>
+                                
+                                {/* Continuous Mode Toggle */}
+                                <label className="flex items-center justify-center gap-2 cursor-pointer mt-2 text-sm text-gray-600">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={isContinuousMode}
+                                        onChange={(e) => setIsContinuousMode(e.target.checked)}
+                                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span>สแกนคนต่อไปอัตโนมัติ (Auto-Next)</span>
+                                </label>
+                            </>
+                        )}
+                        
+                        {status !== 'valid' && (
                             <button 
-                                onClick={confirmRedemptionFromScan}
-                                disabled={!!savingRedemption}
-                                className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-200 active:scale-95 transition-all flex items-center justify-center"
+                                onClick={() => { setVerifyResult(null); setIsScannerOpen(true); }}
+                                className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors flex items-center justify-center"
                             >
-                                {savingRedemption ? <Loader2 className="w-5 h-5 animate-spin"/> : <Gift className="w-5 h-5 mr-2"/>}
-                                ยืนยันการแจกรางวัล
+                                <ScanLine className="w-4 h-4 mr-2" /> สแกนใหม่
                             </button>
                         )}
                     </div>
@@ -478,6 +388,7 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         );
     };
 
+    // ... (Keep existing renderStatsModal, renderDashboardModal) ...
     // --- Render Stats Modal (Updated with Responsive List) ---
     const renderStatsModal = () => {
         if (!viewingStatsFor) return null;
@@ -657,7 +568,6 @@ const PassportSettings: React.FC<PassportSettingsProps> = ({ data, onDataUpdate 
         );
     };
 
-    // --- Render Dashboard Modal ---
     const renderDashboardModal = () => {
         if (!showDashboard || !dashboardStats) return null;
 
